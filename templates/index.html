@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SyncLRC</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <meta name="description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics.">
+    <meta name="keywords" content="lyrics, karaoke, lrc, synced lyrics, music, finder">
+    <meta name="author" content="Tharuk Renuja">
+    <meta property="og:title" content="SyncLRC">
+    <meta property="og:description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics.">
+    <meta property="og:type" content="website">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <div class="app-container">
+        <header>
+            <div class="logo">SyncLRC</div>
+            <div class="header-actions">
+                <button id="theme-toggle" class="theme-toggle">
+                </button>
+                <button id="api-info-btn" class="header-btn" title="Developer API">
+                    <i data-lucide="info"></i>
+                </button>
+                <a href="https://github.com/TharukRenuja/SyncLRC" target="_blank" class="github-link" title="Source Code">
+                    <i data-lucide="github"></i>
+                </a>
+            </div>
+        </header>
+
+        <main>
+            <div class="search-wrapper">
+                <div class="search-bar">
+                    <i data-lucide="search"></i>
+                    <input type="text" id="search-input" placeholder="Search for tracks or artists..." autocomplete="off">
+                </div>
+                <div id="results-dropdown" class="results-dropdown"></div>
+            </div>
+
+            <div id="welcome-state" class="welcome-state">
+                <i data-lucide="search"></i>
+                <h2>Find Your Lyrics</h2>
+                <p>Search for a track or artist to get started. We'll find the best karaoke, synced, or plain lyrics for you.</p>
+            </div>
+
+            <div id="loader" class="loader">
+                <div class="spinner"></div>
+            </div>
+
+            <div id="lyrics-view" class="lyrics-view">
+                <div id="track-info" class="track-info">
+                </div>
+
+                <div class="controls-bar">
+                    <div class="tabs">
+                        <button class="tab active" data-type="karaoke">Karaoke</button>
+                        <button class="tab" data-type="synced">Synced</button>
+                        <button class="tab" data-type="plain">Plain</button>
+                    </div>
+                    <button id="copy-button" class="copy-button">
+                        <i data-lucide="copy"></i>
+                        Copy
+                    </button>
+                </div>
+
+                <div id="lyrics-content" class="lyrics-content">
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 SyncLRC. Built with ❤️ by <a href="https://github.com/TharukRenuja" target="_blank">Tharuk Renuja</a></p>
+        </footer>
+    </div>
+
+    <div id="api-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i data-lucide="code"></i> Developer API</h2>
+                <button id="close-modal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>You can use the SyncLRC API to fetch lyrics programmatically.</p>
+                
+                <div class="api-section">
+                    <h3>Endpoint</h3>
+                    <code class="api-code">GET /lyrics</code>
+                </div>
+
+                <div class="api-section">
+                    <h3>Parameters</h3>
+                    <ul class="api-params">
+                        <li><code>track</code> (Required): Name of the song.</li>
+                        <li><code>artist</code> (Required): Name of the artist.</li>
+                        <li><code>type</code> (Optional): <code>karaoke</code>, <code>synced</code>, or <code>plain</code>.</li>
+                    </ul>
+                </div>
+
+                <div class="api-section">
+                    <h3>Example Request</h3>
+                    <code class="api-code">/lyrics?track="Song Name"&artist="Artist"&type=synced</code>
+                </div>
+
+                <div class="api-section">
+                    <h3>Response Format</h3>
+                    <pre class="api-json">
+{
+  "lyrics": "[00:00.00]...",
+  "type": "synced"
+}
+                    </pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
