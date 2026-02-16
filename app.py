@@ -3,7 +3,11 @@ from db_manager import DatabaseManager
 from lyrics_fetcher import LyricsFetcher
 import os
 
+# Set HOME to /tmp for Vercel read-only file system
+os.environ['HOME'] = '/tmp'
+
 app = Flask(__name__)
+
 
 db_manager = DatabaseManager()
 lyrics_fetcher = LyricsFetcher()
