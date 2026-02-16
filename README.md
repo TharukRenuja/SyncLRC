@@ -59,6 +59,10 @@ Devs can fetch lyrics directly via the following endpoint:
 
 Contributions are welcome! Feel free to open an issue or submit a pull request if you have ideas for improvements.
 
+## 📜 Credits
+
+This project uses [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from multiple sources.
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
