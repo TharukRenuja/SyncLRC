@@ -1,5 +1,9 @@
 import re
 import syncedlyrics
+from langdetect import detect, DetectorFactory
+from langdetect.lang_detect_exception import LangDetectException
+
+DetectorFactory.seed = 0
 
 class LyricsFetcher:
     def get_lyrics(self, track: str, artist: str, requested_type: str = None):
@@ -9,27 +13,86 @@ class LyricsFetcher:
         """
         search_term = f"{track} {artist}"
         
-        raw_lyrics = syncedlyrics.search(search_term, enhanced=True)
+        # Detect expected language from metadata
+        expected_lang = self._detect_language(f"{track} {artist}")
+        is_latin_metadata = self._is_mostly_latin(track) and self._is_mostly_latin(artist)
         
-        if raw_lyrics and self.detect_type(raw_lyrics) == 'karaoke':
-             pass
-        else:
-             raw_lyrics_standard = syncedlyrics.search(search_term)
-             if raw_lyrics_standard:
-                 raw_lyrics = raw_lyrics_standard
+        providers = ["musixmatch", "lrclib", "netease"]
+        results = []
 
-        if not raw_lyrics:
+        for provider in providers:
+            raw_lyrics = syncedlyrics.search(search_term, enhanced=True, providers=[provider])
+            if not raw_lyrics:
+                raw_lyrics = syncedlyrics.search(search_term, enhanced=False, providers=[provider])
+            
+            if not raw_lyrics:
+                continue
+
+            current_type = self.detect_type(raw_lyrics)
+            detected_lang = self._detect_language(raw_lyrics)
+            
+            results.append({
+                'lyrics': raw_lyrics,
+                'type': current_type,
+                'lang': detected_lang,
+                'provider': provider
+            })
+
+            # 1. Matches expected language precisely
+            if detected_lang == expected_lang and detected_lang != 'unknown':
+                break
+                
+            # 2. English preference (even if detect() was unsure)
+            if is_latin_metadata and detected_lang == 'en':
+                break
+
+        if not results:
             return None, None
 
-        found_type = self.detect_type(raw_lyrics)
+        best_result = results[0]
         
-        raw_lyrics = self._clean_lyrics(raw_lyrics)
+        if expected_lang != 'unknown':
+            for res in results:
+                if res['lang'] == expected_lang:
+                    best_result = res
+                    break
+        
+        # Secondary check for English in songs
+        if is_latin_metadata and best_result['lang'] != 'en':
+            for res in results:
+                if res['lang'] == 'en':
+                    best_result = res
+                    break
+        
+        raw_lyrics = self._clean_lyrics(best_result['lyrics'])
+        found_type = best_result['type']
 
         if requested_type:
             requested_type = requested_type.lower()
             return self.convert_lyrics(raw_lyrics, found_type, requested_type)
         
         return raw_lyrics, found_type
+
+    def _is_mostly_latin(self, text: str) -> bool:
+        """Heuristic to check if text is likely English/Latin based."""
+        if not text:
+            return True
+        latin_chars = len(re.findall(r'[a-zA-Z0-9\s\-_.,()\'"&!]', text))
+        return (latin_chars / len(text)) > 0.7 if len(text) > 0 else True
+
+    def _detect_language(self, lyrics: str) -> str:
+        """Detects the language of the lyrics text."""
+        try:
+            clean_text = re.sub(r'\[\d+:\d{2}[.:]\d+\]', '', lyrics)
+            clean_text = re.sub(r'<\d+:\d{2}[.:]\d+>', '', clean_text)
+            clean_text = clean_text.strip()
+            
+            if not clean_text:
+                return 'unknown'
+                
+            return detect(clean_text)
+        except LangDetectException:
+            return 'unknown'
 
     def _clean_lyrics(self, lyrics: str) -> str:
         if not lyrics:
@@ -38,8 +101,10 @@ class LyricsFetcher:
         # Non-lyric information (credits, metadata)
         forbidden_keywords = [
             '作词', '作曲', '制作人', '音频工程师', '母带工程师', '人声', '混音师', '混音', '编曲', '录音',
+            '作曲家', '作詞', '編曲', '歌词', '词', '曲', '翻译', '翻唱', '编曲家', '监制', '和声',
             'Lyrics by', 'Composed by', 'Arranged by', 'Produced by', 'Mixed by', 'Mastered by',
-            'Written by', 'Performed by', 'Vocals by', 'Mixed at', 'Mastered at', 'Studio'
+            'Written by', 'Performed by', 'Vocals by', 'Mixed at', 'Mastered at', 'Studio',
+            'Music by', 'Lyrics by'
         ]
         
         pattern = re.compile(r'(' + '|'.join(forbidden_keywords) + r'|OP:|SP:)', re.IGNORECASE)
@@ -49,10 +114,14 @@ class LyricsFetcher:
         for line in lines:
             line_clean = re.sub(r'[ \t]+', ' ', line).strip()
             
+            # Remove space after word-level timestamps (karaoke format)
+            # [00:01.26] <00:01.26> Baby -> [00:01.26] <00:01.26>Baby
+            line_clean = re.sub(r'(<\d+:\d{2}[.:]\d+>)\s+(?!<)', r'\1', line_clean)
+            
             content_only = re.sub(r'\[\d+:\d{2}[.:]\d+\]', '', line_clean).strip()
             content_only = re.sub(r'<\d+:\d{2}[.:]\d+>', '', content_only).strip()
             
-            if pattern.search(content_only) and len(content_only) < 100:
+            if pattern.search(content_only):
                 continue
                 
             if line_clean:

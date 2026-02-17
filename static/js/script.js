@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiModal = document.getElementById('api-modal');
     const closeModal = document.getElementById('close-modal');
     const welcomeState = document.getElementById('welcome-state');
+    const clearSearchBtn = document.getElementById('clear-search');
 
     let searchTimeout;
     let currentRawLyrics = null;
@@ -48,11 +49,14 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(searchTimeout);
 
         if (!query) {
+            clearSearchBtn.style.display = 'none';
             resultsDropdown.style.display = 'none';
             lyricsView.style.display = 'none';
             welcomeState.style.display = 'flex';
             return;
         }
+
+        clearSearchBtn.style.display = 'flex';
 
         searchTimeout = setTimeout(async () => {
             try {
@@ -100,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeState.style.display = 'none';
         loader.style.display = 'block';
         searchInput.value = `${track} — ${artist}`;
+        clearSearchBtn.style.display = 'flex';
 
         try {
             const response = await fetch(`/lyrics?track=${encodeURIComponent(track)}&artist=${encodeURIComponent(artist)}&type=karaoke`);
@@ -111,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentLyricsType = data.type;
             
             displayTrackInfo(track, artist, artwork);
-            renderLyrics('karaoke');
+            renderLyrics(currentActiveType);
             
             loader.style.display = 'none';
             lyricsView.style.display = 'block';
@@ -225,6 +230,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!e.target.closest('.search-wrapper')) {
             resultsDropdown.style.display = 'none';
         }
+    });
+
+    clearSearchBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        clearSearchBtn.style.display = 'none';
+        resultsDropdown.style.display = 'none';
+        lyricsView.style.display = 'none';
+        welcomeState.style.display = 'flex';
+        searchInput.focus();
     });
 
     // Modal Logic

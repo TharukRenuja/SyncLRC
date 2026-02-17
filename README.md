@@ -6,43 +6,11 @@ SyncLRC is a simple, minimalist lyrics finder designed to help you discover and 
 
 - **Triple Format Support**: Fetch lyrics in Karaoke (Enhanced LRC), Synced (Standard LRC), and Plain Text formats.
 - **Smart Fallback**: If your preferred format isn't available, the app gracefully lets you know and suggests alternatives.
+- **Enhanced Provider Selection**: Prioritizes top-tier sources like Musixmatch and LRCLIB to ensure high-quality, synchronized lyrics.
+- **Original Language Preference**: Intelligent language detection ensures the original lyrics are prioritized over translations, especially for international tracks.
 - **Clean Sanitization**: Automatically filters out metadata and credit clutter (lyricists, composers, etc.) for a distraction-free experience.
 - **Developer API**: Built-in `/lyrics` endpoint for programmatic access to lyrics data.
 - **Web Access**: General users can easily search for tracks and view all lyrics formats directly through the intuitive web interface.
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Python 3.8+
-- A Supabase account (for lyrics caching/database)
-
-### Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/TharukRenuja/SyncLRC.git
-   cd SyncLRC
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure Environment Variables**:
-   Create a `.env` file in the root directory and add your Supabase credentials:
-   ```env
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_KEY=your_supabase_anon_key
-   ```
-
-### Running the App
-
-```bash
-python app.py
-```
-The application will be available at `http://127.0.0.1:5000`.
 
 ## 🛠️ Developer API
 
@@ -61,7 +29,7 @@ Contributions are welcome! Feel free to open an issue or submit a pull request i
 
 ## 📜 Credits
 
-This project uses [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from multiple sources.
+This project uses [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from `Musixmatch`, `LRCLIB`, and `Netease`.
 
 ## 📄 License
 

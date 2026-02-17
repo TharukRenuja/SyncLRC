@@ -4,3 +4,4 @@ supabase
 python-dotenv
 flake8
 pytest
+langdetect
