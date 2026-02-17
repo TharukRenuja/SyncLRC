@@ -16,24 +16,24 @@ SyncLRC is a simple, minimalist lyrics finder designed to help you discover and 
 
 Devs can fetch lyrics directly via the following endpoint:
 
-#### Usage Example:
+### Usage Example:
 
-**Search by Track ID**
+#### Search by Track ID
 `GET` `/lyrics?id=a1b2c3d4e5f6g7h8...`
 
-**Search by Track Name & Artist**
+#### Search by Track Name & Artist
 `GET` `/lyrics?track="Song Name"&artist="Artist Name"`
 
-**Search by Track Name, Artist and Specific Type**
+#### Search by Track Name, Artist and Specific Type
 `GET` `/lyrics?track="Song Name"&artist="Artist Name"&type=synced`
 
-#### Parameters:
+### Parameters:
 - `id`: (Optional) Unique hash to fetch specific lyrics (bypasses track/artist).
 - `track`: (Required if no `id`) Song name.
 - `artist`: (Required if no `id`) Artist name.
 - `type`: (Optional) `karaoke`, `synced`, or `plain`.
 
-#### Response Format:
+### Response Format:
 ```json
 {
   "id": "a1b2c3d4e5f6g7h8...",
