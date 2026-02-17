@@ -108,8 +108,9 @@
           <div class="api-section">
             <h3>Parameters</h3>
             <ul class="api-params">
-              <li><code>track</code> (Required): Name of the song.</li>
-              <li><code>artist</code> (Required): Name of the artist.</li>
+              <li><code>id</code> (Optional): Unique hash to fetch specific lyrics (bypasses track/artist).</li>
+              <li><code>track</code> (Required if no id): Name of the song.</li>
+              <li><code>artist</code> (Required if no id): Name of the artist.</li>
               <li>
                 <code>type</code> (Optional): <code>karaoke</code>,
                 <code>synced</code>, or <code>plain</code>.
@@ -118,16 +119,20 @@
           </div>
 
           <div class="api-section">
-            <h3>Example Request</h3>
-            <code class="api-code"
-              >/lyrics?track="Song Name"&artist="Artist"&type=synced</code
-            >
+            <h3>Example Requests</h3>
+            <p>Fetch by track/artist:</p>
+            <code class="api-code">/lyrics?track=Song&artist=Artist&type=synced</code>
+            <p style="margin-top: 10px;">Fetch by unique ID:</p>
+            <code class="api-code">/lyrics?id=a1b2c3d4e5f6g7h8...</code>
           </div>
 
           <div class="api-section">
             <h3>Response Format</h3>
             <pre class="api-json">
 {
+  "id": "a1b2c3d4e5f6g7h8...",
+  "track": "Song Name",
+  "artist": "Artist Name",
   "lyrics": "[00:00.00]...",
   "type": "synced"
 }
