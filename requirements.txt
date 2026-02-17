@@ -2,6 +2,6 @@ flask
 syncedlyrics
 supabase
 python-dotenv
-
 langdetect
 requests
+flask-limiter
