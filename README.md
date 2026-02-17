@@ -78,7 +78,7 @@ To ensure fair usage and stability, the API has the following rate limits:
 
 Exceeding these limits will result in a `429 Too Many Requests` response.
 
-> **Note**: These limits may be increased in the future if we can host SyncLRC on a real server. If you'd like to support this or donate, please connect with [Tharuk](https://github.com/TharukRenuja) (check social links on profile) or donate at [tharuk.pro/donate](https://tharuk.pro/donate).
+> **Note**: These limits may be increased in the future as our databases grow or if we can host SyncLRC on a real server. If you'd like to support this or donate, please connect with [Tharuk](https://github.com/TharukRenuja) (check social links on profile) or donate at [tharuk.pro/donate](https://tharuk.pro/donate).
 
 ## 🤝 Contributing
 
