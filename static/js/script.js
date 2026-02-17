@@ -242,6 +242,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Modal Logic
+    const apiTabs = document.querySelectorAll('.api-tab');
+    const apiSections = document.querySelectorAll('.api-section');
+
+    apiTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Remove active class from all tabs and sections
+            apiTabs.forEach(t => t.classList.remove('active'));
+            apiSections.forEach(s => s.classList.remove('active'));
+
+            // Add active class to clicked tab and target section
+            tab.classList.add('active');
+            const targetId = tab.dataset.target;
+            document.getElementById(targetId).classList.add('active');
+        });
+    });
+
     apiInfoBtn.addEventListener('click', () => {
         apiModal.classList.add('active');
         updateIcons();

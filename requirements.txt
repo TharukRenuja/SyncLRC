@@ -2,6 +2,6 @@ flask
 syncedlyrics
 supabase
 python-dotenv
-flake8
-pytest
+
 langdetect
+requests

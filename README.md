@@ -9,31 +9,55 @@ SyncLRC is a simple, minimalist lyrics finder designed to help you discover and 
 - **Enhanced Provider Selection**: Prioritizes top-tier sources like Musixmatch and LRCLIB to ensure high-quality, synchronized lyrics.
 - **Original Language Preference**: Intelligent language detection ensures the original lyrics are prioritized over translations, especially for international tracks.
 - **Clean Sanitization**: Automatically filters out metadata and credit clutter (lyricists, composers, etc.) for a distraction-free experience.
-- **Developer API**: Built-in `/lyrics` endpoint for programmatic access to lyrics data.
+- **Developer API**: Built-in `/search` `/lyrics` endpoints for programmatic access to lyrics data.
 - **Web Access**: General users can easily search for tracks and view all lyrics formats directly through the intuitive web interface.
 
 ## 🛠️ Developer API
 
 Devs can fetch lyrics directly via the following endpoint:
 
-### Usage Example:
+### Endpoints
 
-#### Search by Track ID
-`GET` `/lyrics?id=a1b2c3d4e5f6g7h8...`
+#### 1. Search Tracks & Lyrics
+`GET` `/search?query={query}&limit={limit}&offset={offset}`
 
-#### Search by Track Name & Artist
-`GET` `/lyrics?track="Song Name"&artist="Artist Name"`
+**Parameters:**
+- `query`: (Required) Search term (track or artist).
+- `limit`: (Optional) Max results (default `10`).
+- `offset`: (Optional) Pagination offset (default `0`).
 
-#### Search by Track Name, Artist and Specific Type
-`GET` `/lyrics?track="Song Name"&artist="Artist Name"&type=synced`
+**Response:**
+```json
+{
+  "results": [
+    {
+      "id": "a1b2c3d4e5f6g7h8...",
+      "track": "Song Name",
+      "artist": "Artist Name",
+      "lyrics": {
+        "plain": "Lyrics text...",
+        "synced": "[00:00.00]...",
+        "karaoke": "[00:00.00]<00:00.05>..."
+      }
+    }
+  ],
+  "total": 10,
+  "limit": 25,
+  "offset": 0
+}
+```
 
-### Parameters:
+#### 2. Fetch Specific Lyrics
+`GET` `/lyrics?track={track}&artist={artist}&type={type}`
+`GET` `/lyrics?id={id}`
+
+**Parameters:**
 - `id`: (Optional) Unique hash to fetch specific lyrics (bypasses track/artist).
 - `track`: (Required if no `id`) Song name.
 - `artist`: (Required if no `id`) Artist name.
 - `type`: (Optional) `karaoke`, `synced`, or `plain`.
 
-### Response Format:
+**Response:**
 ```json
 {
   "id": "a1b2c3d4e5f6g7h8...",
@@ -44,13 +68,28 @@ Devs can fetch lyrics directly via the following endpoint:
 }
 ```
 
+### Rate Limits
+
+To ensure fair usage and stability, the API has the following rate limits:
+
+- **Search (`/search`)**: 60 requests per minute (~1 req/sec).
+- **Lyrics (`/lyrics`)**: 300 requests per minute (~5 req/sec).
+- **Global**: 2,000 requests per day (per IP).
+
+Exceeding these limits will result in a `429 Too Many Requests` response.
+
+> **Note**: These limits may be increased in the future if we can host SyncLRC on a real server. If you'd like to support this or donate, please connect with [Tharuk](https://github.com/TharukRenuja) (check social links on profile) or donate at [tharuk.pro/donate](https://tharuk.pro/donate).
+
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to open an issue or submit a pull request if you have ideas for improvements.
+Contributions are welcome!
+
+1.  **Improvements**: Feel free to open an issue or pull request.
+2.  **Sanitization**: We maintain a list of strings to filter out (like "Synced by", "Translated by"). If you find more clutter in lyrics, please add them to the sanitization list in `sanitize.py`.
 
 ## 📜 Credits
 
-This project uses [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from `Musixmatch`, `LRCLIB`, and `Netease`.
+This project uses the [iTunes Search API](https://performance-partners.apple.com/search-api) to fetch track metadata and [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from `Musixmatch`, `LRCLIB`, and `Netease`.
 
 ## 📄 License
 

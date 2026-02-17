@@ -1,7 +1,10 @@
 import re
+import time
+import random
 import syncedlyrics
 from langdetect import detect, DetectorFactory
 from langdetect.lang_detect_exception import LangDetectException
+from sanitize import FORBIDDEN_KEYWORDS, LRC_TAGS
 
 DetectorFactory.seed = 0
 
@@ -11,9 +14,11 @@ class LyricsFetcher:
         Fetches lyrics and processes them based on the requested type.
         Priority: Karaoke (Enhanced) -> Synced -> Plain
         """
+        if self.is_instrumental(track):
+            return None, None
+
         search_term = f"{track} {artist}"
         
-        # Detect expected language from metadata
         expected_lang = self._detect_language(f"{track} {artist}")
         is_latin_metadata = self._is_mostly_latin(track) and self._is_mostly_latin(artist)
         
@@ -21,9 +26,28 @@ class LyricsFetcher:
         results = []
 
         for provider in providers:
-            raw_lyrics = syncedlyrics.search(search_term, enhanced=True, providers=[provider])
-            if not raw_lyrics:
-                raw_lyrics = syncedlyrics.search(search_term, enhanced=False, providers=[provider])
+            raw_lyrics = None
+            for attempt in range(2):
+                try:
+                    raw_lyrics = syncedlyrics.search(search_term, enhanced=True, providers=[provider])
+                    if not raw_lyrics:
+                        raw_lyrics = syncedlyrics.search(search_term, enhanced=False, providers=[provider])
+                    
+                    if raw_lyrics:
+                        break
+                    else:
+                        break
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    if "401" in err_msg or "ssl" in err_msg or "eof" in err_msg:
+                        if attempt == 0:
+                            time.sleep(random.uniform(0.2, 0.5))
+                            continue
+                        break
+                    
+                    if attempt == 1:
+                        print(f"Skipping {provider} for {track} - error: {e}")
+                    time.sleep(random.uniform(0.1, 0.3)) # Jitter
             
             if not raw_lyrics:
                 continue
@@ -38,11 +62,9 @@ class LyricsFetcher:
                 'provider': provider
             })
 
-            # 1. Matches expected language precisely
             if detected_lang == expected_lang and detected_lang != 'unknown':
                 break
                 
-            # 2. English preference (even if detect() was unsure)
             if is_latin_metadata and detected_lang == 'en':
                 break
 
@@ -57,7 +79,6 @@ class LyricsFetcher:
                     best_result = res
                     break
         
-        # Secondary check for English in songs
         if is_latin_metadata and best_result['lang'] != 'en':
             for res in results:
                 if res['lang'] == 'en':
@@ -99,15 +120,8 @@ class LyricsFetcher:
             return ""
         
         # Non-lyric information (credits, metadata)
-        forbidden_keywords = [
-            '作词', '作曲', '制作人', '音频工程师', '母带工程师', '人声', '混音师', '混音', '编曲', '录音',
-            '作曲家', '作詞', '編曲', '歌词', '词', '曲', '翻译', '翻唱', '编曲家', '监制', '和声',
-            'Lyrics by', 'Composed by', 'Arranged by', 'Produced by', 'Mixed by', 'Mastered by',
-            'Written by', 'Performed by', 'Vocals by', 'Mixed at', 'Mastered at', 'Studio',
-            'Music by', 'Lyrics by'
-        ]
-        
-        pattern = re.compile(r'(' + '|'.join(forbidden_keywords) + r'|OP:|SP:)', re.IGNORECASE)
+        pattern = re.compile(r'(' + '|'.join(FORBIDDEN_KEYWORDS) + r'|OP:|SP:)', re.IGNORECASE)
+        tag_patterns = [re.compile(tag, re.IGNORECASE) for tag in LRC_TAGS]
         
         lines = lyrics.split('\n')
         cleaned_lines = []
@@ -115,12 +129,14 @@ class LyricsFetcher:
             line_clean = re.sub(r'[ \t]+', ' ', line).strip()
             
             # Remove space after word-level timestamps (karaoke format)
-            # [00:01.26] <00:01.26> Baby -> [00:01.26] <00:01.26>Baby
             line_clean = re.sub(r'(<\d+:\d{2}[.:]\d+>)\s+(?!<)', r'\1', line_clean)
             
             content_only = re.sub(r'\[\d+:\d{2}[.:]\d+\]', '', line_clean).strip()
             content_only = re.sub(r'<\d+:\d{2}[.:]\d+>', '', content_only).strip()
             
+            if any(tag.match(line_clean) for tag in tag_patterns):
+                continue
+                
             if pattern.search(content_only):
                 continue
                 
@@ -165,6 +181,12 @@ class LyricsFetcher:
             return self.convert_to_plain(lyrics), 'plain'
 
         return lyrics, current_type
+
+    def is_instrumental(self, track: str) -> bool:
+        """Checks if a track is likely an instrumental based on its title."""
+        keywords = ['instrumental', 'karaoke', 'version instrumental', 'bez slow', 'bez słów', 'orchestral']
+        track_lower = track.lower()
+        return any(kw in track_lower for kw in keywords)
 
     def convert_karaoke_to_synced(self, lyrics: str) -> str:
         clean = re.sub(r'<\d+:\d{2}[.:]\d+>', '', lyrics)
