@@ -1,3 +1,9 @@
+# Cloudflare
+.dev.vars
+wrangler.jsonc
+.wrangler/
+node_modules/
+
 # Python
 __pycache__/
 *.py[cod]

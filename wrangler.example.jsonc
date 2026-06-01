@@ -1,0 +1,31 @@
+{
+  "name": "synclrc",
+  "main": "src/index.js",
+  "compatibility_date": "2025-12-01",
+  "assets": {
+    "directory": "./",
+    "html_handling": "auto-trailing-slash"
+  },
+  "d1_databases": [
+    {
+      "binding": "D1_DB",
+      "database_name": "synclrc-d1",
+      "database_id": "YOUR-D1-ID"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "synclrc-lyrics"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": "YOUR-KV-ID"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
+  }
+}

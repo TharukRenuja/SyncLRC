@@ -323,6 +323,12 @@ header {
   color: var(--text-primary);
 }
 
+.controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .lyrics-content {
   white-space: pre-wrap;
   font-size: 1.1rem;

@@ -1,105 +1,257 @@
-# A list of credit and metadata keywords across multiple languages
-# This file serves as a central repository for lyrics sanitization keywords.
+"""Lyrics credit/metadata pattern list for contributors.
 
-FORBIDDEN_KEYWORDS = [
+Add new patterns here so they can be reviewed and ported to src/sanitize.js.
+Patterns are applied line-by-line after timestamp removal. If a line
+matches any pattern, it is removed from the output.
+
+To contribute:
+  1. Add your keyword or phrase to the appropriate section below
+  2. Open a PR at https://github.com/TharukRenuja/SyncLRC
+"""
+
+import re
+
+CREDIT_PATTERNS: list[re.Pattern] = [
     # English
-    'Lyrics by', 'Composed by', 'Arranged by', 'Produced by', 'Mixed by', 'Mastered by',
-    'Written by', 'Performed by', 'Vocals by', 'Mixed at', 'Mastered at', 'Studio',
-    'Music by', 'Lyrics by', 'Album by', 'Artist by', 'Track by', 'Credits by',
-    'Guitar', 'Drums', 'Synth', 'Synthesizer', 'Bass', 'Piano', 'Keyboards', 'Violin',
-    'Cello', 'Saxophone', 'Trumpet', 'Flute', 'Engineer', 'Production', 'Label',
-    'Remix by', 'Feature by', 'Backing vocals', 'Recording', 'Mastering', 'Sound engineer',
-    'Co-produced by', 'Assistant engineer', 'Executive producer', 'Synthesizers', 'Programmed by',
-    
-    # Spanish
-    'Letra por', 'Letras por', 'Compuesta por', 'Arreglada por', 'Producida por', 'Mezclada por', 
-    'Masterizada por', 'Escrita por', 'Interpretada por', 'Vocales por', 'Música por',
-    'Guitarra', 'Batería', 'Bajo', 'Teclados', 'Violín', 'Violonchelo', 'Saxofón', 'Trompeta', 'Flauta',
-    'Producido por', 'Mezclado por', 'Escrito por', 'Grabado en',
-    
-    # French
-    'Paroles par', 'Composé par', 'Arrangé par', 'Produit par', 'Mixé par', 'Masterisé par', 
-    'Écrit par', 'Interprété par', 'Chant par', 'Musique par',
-    'Guitare', 'Batterie', 'Basse', 'Clavier', 'Violon', 'Violoncelle', 'Saxophone', 'Trompette', 'Flûte',
-    'Enregistré à', 'Producteur', 'Mixage',
-    
-    # German
-    'Songtext von', 'Komponiert von', 'Arrangiert von', 'Produziert von', 'Gemischt von', 
-    'Gemaatert von', 'Geschrieben von', 'Gesungen von', 'Musik von',
-    'Gitarre', 'Schlagzeug', 'Bass', 'Keyboard', 'Violine', 'Violoncello', 'Saxophon', 'Trompete', 'Flöte',
-    'Aufgenommen in', 'Produzent', 'Mischung',
-    
-    # Italian
-    'Parole di', 'Composto da', 'Arrangiato da', 'Prodotto da', 'Mixato da', 'Masterizzato da', 
-    'Scritto da', 'Interpretato da', 'Voci di', 'Musica di',
-    'Chitarra', 'Batteria', 'Basso', 'Tastiere', 'Violino', 'Violoncello', 'Sassofono', 'Tromba', 'Flauto',
-    'Registrato presso', 'Produttore', 'Mixaggio',
-    
-    # Portuguese
-    'Letra por', 'Composta por', 'Arranjada por', 'Produzida por', 'Mixada por', 'Masterizada por', 
-    'Escrita por', 'Interpretada por', 'Vocais por', 'Música por',
-    'Guitarra', 'Bateria', 'Baixo', 'Teclados', 'Violino', 'Violoncelo', 'Saxofone', 'Trompete', 'Flauta',
-    'Gravado em', 'Produtor', 'Mixagem',
-    
-    # Russian
-    'Слова', 'Музыка', 'Аранжировка', 'Продюсер', 'Сведение', 'Мастеринг', 
-    'Вокал', 'Гитара', 'Барабаны', 'Бас', 'Клавишные', 'Запись', 'Студия',
-    'Альбом', 'Исполнитель', 'Трек', 'Название', 'Звукорежиссер', 'Мастеринг',
-    'Автор текста', 'Композитор', 'Аранжировщик', 'Художник', 'Дизайн',
-    'Автор музыки', 'Бэк-вокал', 'Клавиши', 'Ударные', 'Скрипка', 'Саксофон',
-    
-    # Chinese (Simplified & Traditional)
-    '作词', '作曲', '制作人', '音频工程师', '母带工程师', '人声', '混音师', '混音', '编曲', '录音',
-    '作曲家', '作詞', '編曲', '歌词', '词', '曲', '翻译', '翻唱', '编曲家', '监制', '和声',
-    '吉他', '鼓', '合成器', '贝斯', '钢琴', '键盘', '和音', '助理', '发行', '后期',
-    '乐队', '发行公司', '企划', '出品', '版权', '录音室', '混音室', '母带室',
-    '艺人', '专辑', '歌词由', '监制', '总监', '策划', '出品人',
-    
+    re.compile(r'lyrics?\s+by', re.I),
+    re.compile(r'composed\s+by', re.I),
+    re.compile(r'arranged\s+by', re.I),
+    re.compile(r'produced\s+by', re.I),
+    re.compile(r'mixed\s+by', re.I),
+    re.compile(r'mastered\s+by', re.I),
+    re.compile(r'written\s+by', re.I),
+    re.compile(r'performed\s+by', re.I),
+    re.compile(r'vocals?\s+by', re.I),
+    re.compile(r'music\s+by', re.I),
+    re.compile(r'recorded\s+by', re.I),
+    re.compile(r'engineered\s+by', re.I),
+    re.compile(r'mixed\s+at', re.I),
+    re.compile(r'mastered\s+at', re.I),
+    re.compile(r'recorded\s+at', re.I),
+    re.compile(r'co-produced\s+by', re.I),
+    re.compile(r'executive\s+producer', re.I),
+    re.compile(r'backing\s+vocals?', re.I),
+    re.compile(r'programmed\s+by', re.I),
+    re.compile(r'remix\s+by', re.I),
+    re.compile(r'feature\s+by', re.I),
+    re.compile(r'sound\s+engineer', re.I),
+    re.compile(r'assistant\s+engineer', re.I),
+    re.compile(r'synthesizers?', re.I),
+    re.compile(r'\bguitar\b', re.I),
+    re.compile(r'\bdrums?\b', re.I),
+    re.compile(r'\bbass\b', re.I),
+    re.compile(r'\bpiano\b', re.I),
+    re.compile(r'\bkeyboards?\b', re.I),
+    re.compile(r'\bviolin\b', re.I),
+    re.compile(r'\bcello\b', re.I),
+    re.compile(r'\bsaxophone\b', re.I),
+    re.compile(r'\btrumpet\b', re.I),
+    re.compile(r'\bflute\b', re.I),
+    re.compile(r'\bsynth\b', re.I),
+    re.compile(r'\bproduction\b', re.I),
+    re.compile(r'\blabel\b', re.I),
+    re.compile(r'\brecording\b', re.I),
+    re.compile(r'\bmastering\b', re.I),
+    re.compile(r'\bstudio\b', re.I),
+    re.compile(r'\bcredits?\b', re.I),
+    re.compile(r'album\s+by', re.I),
+    re.compile(r'artist\s+by', re.I),
+    re.compile(r'track\s+by', re.I),
+    # Chinese
+    re.compile(r'作词'),
+    re.compile(r'作曲'),
+    re.compile(r'编曲'),
+    re.compile(r'制作人'),
+    re.compile(r'音频工程师'),
+    re.compile(r'母带工程师'),
+    re.compile(r'人声'),
+    re.compile(r'混音师'),
+    re.compile(r'混音'),
+    re.compile(r'录音'),
+    re.compile(r'词[：:]'),
+    re.compile(r'曲[：:]'),
+    re.compile(r'翻译'),
+    re.compile(r'翻唱'),
+    re.compile(r'监制'),
+    re.compile(r'和声'),
+    re.compile(r'OP[：:]'),
+    re.compile(r'SP[：:]'),
+    re.compile(r'歌词'),
+    re.compile(r'出品'),
+    re.compile(r'版权'),
+    re.compile(r'企划'),
+    re.compile(r'出品人'),
+    re.compile(r'吉他'),
+    re.compile(r'鼓'),
+    re.compile(r'合成器'),
+    re.compile(r'贝斯'),
+    re.compile(r'钢琴'),
+    re.compile(r'键盘'),
+    re.compile(r'发行'),
     # Japanese
-    '歌い手', 'ボーカル', '作詞', '作曲', '編曲', 'ミックス', 'マスタリング',
-    '歌', '唄', '演奏', '制作', '編集', '翻訳',
-    'アルバム', 'アーティスト', 'タイトル', 'ギター', 'ドラム', 'ベース', 'ピアノ',
-    'キーボード', 'プロデューサー', 'レコーディング', 'エンジニア', '翻訳者',
-    'バイオリン', 'チェロ', 'サックス', 'トランペット', 'フルート', 'コーラス',
-    
+    re.compile(r'作詞'),
+    re.compile(r'編曲'),
+    re.compile(r'歌い手'),
+    re.compile(r'ボーカル'),
+    re.compile(r'ミックス'),
+    re.compile(r'マスタリング'),
+    re.compile(r'演奏'),
+    re.compile(r'制作'),
+    re.compile(r'編集'),
+    re.compile(r'歌[：:]'),
+    re.compile(r'唄[：:]'),
+    re.compile(r'ギター'),
+    re.compile(r'ドラム'),
+    re.compile(r'ベース'),
+    re.compile(r'ピアノ'),
+    re.compile(r'キーボード'),
+    re.compile(r'プロデューサー'),
+    re.compile(r'レコーディング'),
+    re.compile(r'エンジニア'),
+    re.compile(r'翻訳者'),
     # Korean
-    '작사', '작곡', '편곡', '보컬', '프로듀싱', '믹싱', '마스터링',
-    '노래', '연주', '제작', '녹음', '가사', '번역',
-    '앨범', '아티스트', '제목', '기타', '드럼', '베이스', '피아노', '신디사이저',
-    '키보드', '엔지니어', '프로듀서', '발매', '코러스', '바이올린', '첼로', '섹소폰',
-
-    # Arabic
-    'كلمات', 'ألحان', 'توزيع', 'إنتاج', 'تسجيل', 'استوديو', 'غناء', 'عازف', 
-    'جيتار', 'طبل', 'بيانو', 'كمان', 'موسيقى', 'ألبوم', 'فنان',
-    
+    re.compile(r'작사'),
+    re.compile(r'작곡'),
+    re.compile(r'편곡'),
+    re.compile(r'보컬'),
+    re.compile(r'프로듀싱'),
+    re.compile(r'믹싱'),
+    re.compile(r'마스터링'),
+    re.compile(r'가사'),
+    re.compile(r'번역'),
+    re.compile(r'녹음'),
+    re.compile(r'기타'),
+    re.compile(r'드럼'),
+    re.compile(r'베이스'),
+    re.compile(r'피아노'),
+    # Spanish
+    re.compile(r'letra\s+por', re.I),
+    re.compile(r'compuesta\s+por', re.I),
+    re.compile(r'arreglada\s+por', re.I),
+    re.compile(r'producida\s+por', re.I),
+    re.compile(r'mezclada\s+por', re.I),
+    re.compile(r'masterizada\s+por', re.I),
+    re.compile(r'escrita\s+por', re.I),
+    re.compile(r'interpretada\s+por', re.I),
+    re.compile(r'música\s+por', re.I),
+    re.compile(r'grabado\s+en', re.I),
+    re.compile(r'producido\s+por', re.I),
+    re.compile(r'mezclado\s+por', re.I),
+    # French
+    re.compile(r'paroles\s+par', re.I),
+    re.compile(r'composé\s+par', re.I),
+    re.compile(r'arrangé\s+par', re.I),
+    re.compile(r'produit\s+par', re.I),
+    re.compile(r'mixé\s+par', re.I),
+    re.compile(r'masterisé\s+par', re.I),
+    re.compile(r'écrit\s+par', re.I),
+    re.compile(r'interprété\s+par', re.I),
+    re.compile(r'musique\s+par', re.I),
+    re.compile(r'enregistré\s+à', re.I),
+    re.compile(r'producteur', re.I),
+    # German
+    re.compile(r'songtext\s+von', re.I),
+    re.compile(r'komponiert\s+von', re.I),
+    re.compile(r'arrangiert\s+von', re.I),
+    re.compile(r'produziert\s+von', re.I),
+    re.compile(r'gemischt\s+von', re.I),
+    re.compile(r'gemastert\s+von', re.I),
+    re.compile(r'geschrieben\s+von', re.I),
+    re.compile(r'gesungen\s+von', re.I),
+    re.compile(r'musik\s+von', re.I),
+    re.compile(r'aufgenommen\s+in', re.I),
+    # Italian
+    re.compile(r'parole\s+di', re.I),
+    re.compile(r'composto\s+da', re.I),
+    re.compile(r'arrangiato\s+da', re.I),
+    re.compile(r'prodotto\s+da', re.I),
+    re.compile(r'mixato\s+da', re.I),
+    re.compile(r'masterizzato\s+da', re.I),
+    re.compile(r'scritto\s+da', re.I),
+    re.compile(r'interpretato\s+da', re.I),
+    re.compile(r'musica\s+di', re.I),
+    re.compile(r'registrato\s+presso', re.I),
+    # Portuguese
+    re.compile(r'letra\s+por', re.I),
+    re.compile(r'composta\s+por', re.I),
+    re.compile(r'arranjada\s+por', re.I),
+    re.compile(r'produzida\s+por', re.I),
+    re.compile(r'mixada\s+por', re.I),
+    re.compile(r'masterizada\s+por', re.I),
+    re.compile(r'escrita\s+por', re.I),
+    re.compile(r'interpretada\s+por', re.I),
+    re.compile(r'música\s+por', re.I),
+    re.compile(r'gravado\s+em', re.I),
+    # Russian
+    re.compile(r'слова'),
+    re.compile(r'музыка'),
+    re.compile(r'аранжировка'),
+    re.compile(r'продюсер'),
+    re.compile(r'сведение'),
+    re.compile(r'мастеринг'),
+    re.compile(r'вокал'),
+    re.compile(r'гитара'),
+    re.compile(r'барабаны'),
+    re.compile(r'бас'),
+    re.compile(r'клавишные'),
+    re.compile(r'запись'),
+    re.compile(r'студия'),
+    re.compile(r'исполнитель'),
+    re.compile(r'звукорежиссер'),
+    re.compile(r'автор\s+текста'),
+    re.compile(r'композитор'),
+    re.compile(r'бэк-вокал'),
+    re.compile(r'ударные'),
+    re.compile(r'скрипка'),
     # Hindi
-    'बोल', 'संगीत', 'रचना', 'निर्माता', 'उत्पादन', 'रिकॉर्डिंग', 'स्टूडियो', 'गायक', 
-    'गिटार', 'ड्रम', 'पियानो', 'वायलिन', 'एल्बम', 'कलाकार',
-
-    # Sinhala
-    'පද රචනය', 'සංගීතය', 'ගායනය', 'තනු', 'සංගීත නිර්මාණය', 'ගායනයෙන්',
-    
+    re.compile(r'बोल'),
+    re.compile(r'संगीत'),
+    re.compile(r'रचना'),
+    re.compile(r'निर्माता'),
+    re.compile(r'गायक'),
+    re.compile(r'रिकॉर्डिंग'),
+    re.compile(r'स्टूडियो'),
+    # Arabic
+    re.compile(r'كلمات'),
+    re.compile(r'ألحان'),
+    re.compile(r'توزيع'),
+    re.compile(r'إنتاج'),
+    re.compile(r'تسجيل'),
+    re.compile(r'استوديو'),
+    re.compile(r'غناء'),
     # Tamil
-    'பாடல்', 'இசை', 'பாடியவர்', 'வரிகள்', 'இசையமைப்பு',
-    
-    # Indonesian / Malay
-    'Lirik', 'Penyanyi', 'Pencipta', 'Musik', 'Produksi', 'Rekaman', 'Gitar', 'Drum', 'Bas',
-    
-    # Tagalog / Filipino
-    'Titik', 'Awit', 'Musika', 'Pagkakaayos', 'Nirekord sa', 'Gitara', 'Tambol',
-    
-    # Burmese
-    'တေးဆို', 'တေးရေး', 'တေးဂီတ', 'တေးအယ်လ်ဘမ်',
-    
+    re.compile(r'பாடல்'),
+    re.compile(r'இசை'),
+    re.compile(r'பாடியவர்'),
+    re.compile(r'வரிகள்'),
+    re.compile(r'இசையமைப்பு'),
     # Thai
-    'เนื้อร้อง', 'ทำนอง', 'เรียบเรียง', 'ขับร้อง', 'ดนตรี',
-    
+    re.compile(r'เนื้อร้อง'),
+    re.compile(r'ทำนอง'),
+    re.compile(r'เรียบเรียง'),
+    re.compile(r'ขับร้อง'),
     # Vietnamese
-    'Lời bài hát', 'Nhạc sĩ', 'Ca sĩ', 'Hòa âm', 'Phối khí', 'Sản xuất'
-]
-
-# Standard LRC metadata identification tags as regex patterns
-LRC_TAGS = [
-    r'\[ar:.*\]', r'\[ti:.*\]', r'\[al:.*\]', r'\[au:.*\]', r'\[by:.*\]',
-    r'\[offset:.*\]', r'\[re:.*\]', r'\[ve:.*\]', r'\[la:.*\]'
+    re.compile(r'lời bài hát', re.I),
+    re.compile(r'nhạc sĩ', re.I),
+    re.compile(r'ca sĩ', re.I),
+    re.compile(r'hòa âm', re.I),
+    re.compile(r'phối khí', re.I),
+    re.compile(r'sản xuất', re.I),
+    # Indonesian / Malay
+    re.compile(r'lirik', re.I),
+    re.compile(r'penyanyi', re.I),
+    re.compile(r'pencipta', re.I),
+    re.compile(r'musik', re.I),
+    re.compile(r'produksi', re.I),
+    re.compile(r'rekaman', re.I),
+    # Standard LRC metadata tags
+    re.compile(r'^\[ar:'),
+    re.compile(r'^\[ti:'),
+    re.compile(r'^\[al:'),
+    re.compile(r'^\[au:'),
+    re.compile(r'^\[by:'),
+    re.compile(r'^\[offset:'),
+    re.compile(r'^\[re:'),
+    re.compile(r'^\[ve:'),
+    re.compile(r'^\[la:'),
 ]

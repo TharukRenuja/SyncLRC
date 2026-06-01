@@ -1,3 +1,6 @@
+const DEV = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:';
+const API_BASE = DEV ? 'http://localhost:8787' : location.origin;
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const resultsDropdown = document.getElementById('results-dropdown');
@@ -107,13 +110,18 @@ document.addEventListener('DOMContentLoaded', () => {
         clearSearchBtn.style.display = 'flex';
 
         try {
-            const response = await fetch(`/lyrics?track=${encodeURIComponent(track)}&artist=${encodeURIComponent(artist)}&type=karaoke`);
+            const response = await fetch(`${API_BASE}/api/lyrics?track=${encodeURIComponent(track)}&artist=${encodeURIComponent(artist)}&_t=${Date.now()}`);
             const data = await response.json();
 
             if (data.error) throw new Error(data.error);
 
-            currentRawLyrics = data.lyrics;
-            currentLyricsType = data.type;
+            const bestType = data.karaoke ? 'karaoke' : data.synced ? 'synced' : 'plain';
+            currentRawLyrics = data[bestType];
+            currentLyricsType = bestType;
+            currentActiveType = bestType;
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[data-type="${bestType}"]`)?.classList.add('active');
             
             displayTrackInfo(track, artist, artwork);
             renderLyrics(currentActiveType);
@@ -123,7 +131,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.error('Lyrics fetch error:', err);
             loader.style.display = 'none';
-            alert('Could not find lyrics for this song.');
+            displayTrackInfo(track, artist, artwork);
+            lyricsContent.innerHTML = `
+                <div class="empty-state">
+                    <i data-lucide="music-2"></i>
+                    <h3>Lyrics Not Found</h3>
+                    <p>Could not find lyrics for this song. Try a different search.</p>
+                </div>
+            `;
+            updateIcons();
+            document.querySelector('.controls-actions').style.display = 'none';
+            lyricsView.style.display = 'block';
         }
     };
 
@@ -161,12 +179,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i data-lucide="music-2"></i>
                     <h3>${requestedName} Not Available</h3>
                     <p>This song doesn't have ${type} lyrics yet. Please check <b>Synced</b> or <b>Plain</b> tabs.</p>
+                    <p style="margin-top: 8px; font-size: 0.85em; opacity: 0.7;">It may appear after a moment... our server checks for higher quality lyrics in the background.</p>
                 </div>
             `;
             updateIcons();
+            document.querySelector('.controls-actions').style.display = 'none';
             return;
         }
 
+        document.querySelector('.controls-actions').style.display = 'flex';
         const lyrics = processLyrics(currentRawLyrics, type);
         
         if (type !== 'plain') {
@@ -247,11 +268,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     apiTabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            // Remove active class from all tabs and sections
             apiTabs.forEach(t => t.classList.remove('active'));
             apiSections.forEach(s => s.classList.remove('active'));
 
-            // Add active class to clicked tab and target section
             tab.classList.add('active');
             const targetId = tab.dataset.target;
             document.getElementById(targetId).classList.add('active');
@@ -271,6 +290,31 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === apiModal) {
             apiModal.classList.remove('active');
         }
+    });
+
+    // Save functionality
+    const saveButton = document.getElementById('save-button');
+
+    saveButton.addEventListener('click', () => {
+        if (!currentRawLyrics) return;
+        const text = processLyrics(currentRawLyrics, currentActiveType);
+        if (!text) return;
+
+        let ext = 'lrc';
+        if (currentActiveType === 'plain') ext = 'txt';
+
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const parts = searchInput.value.split(' — ');
+        const trackName = parts[0]?.trim() || 'lyrics';
+        const artistName = parts[1]?.trim() || '';
+        a.download = artistName ? `${trackName} - ${artistName}.${ext}` : `${trackName}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     });
 
     initTheme();
