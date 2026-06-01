@@ -45,11 +45,13 @@ All API endpoints are under `/api/`.
 #### 2. Fetch Specific Lyrics
 
 **Fetch by ID (path)**
+
 `GET /api/lyrics/{id}`
 
 Lookup a track directly by its internal SyncLRC ID. No query parameters needed.
 
 **Fetch by Track & Artist (query params)**
+
 `GET /api/lyrics?track={track}&artist={artist}&type={type}&album={album}&duration={duration}`
 
 - `track`: (Required) Song name.
