@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SyncLRC — Lyrics Finder</title>
+    <link rel="icon" type="image/x-icon" href="static/favicon.ico" />
+    <meta name="description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics." />
+    <meta name="keywords" content="lyrics, karaoke, lrc, synced lyrics, plain lyrics, music lyrics, song lyrics, lyrics finder, word by word karaoke" />
+    <meta name="author" content="Tharuk Renuja" />
+    <meta property="og:title" content="SyncLRC — Lyrics Finder" />
+    <meta property="og:description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://synclrc.tharuk.pro" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="SyncLRC — Lyrics Finder" />
+    <meta name="twitter:description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics." />
+    <link rel="stylesheet" href="static/css/style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  </head>
+  <body>
+    <div class="app-container">
+      <header>
+        <div class="logo">SyncLRC</div>
+        <div class="header-actions">
+          <button id="theme-toggle" class="theme-toggle"></button>
+          <button id="api-info-btn" class="header-btn" title="Developer API">
+            <i data-lucide="info"></i>
+          </button>
+          <a href="https://github.com/TharukRenuja/SyncLRC" target="_blank" class="github-link" title="Source Code">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+          </a>
+        </div>
+      </header>
+
+      <main>
+        <div class="search-wrapper">
+          <div class="search-bar">
+            <i data-lucide="search"></i>
+            <input type="text" id="search-input" placeholder="Search for tracks or artists..." autocomplete="off" />
+            <button id="clear-search" class="clear-search" style="display: none">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+          <div id="results-dropdown" class="results-dropdown"></div>
+        </div>
+
+        <div id="welcome-state" class="welcome-state">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <h2>Find Your Lyrics</h2>
+          <p>Search for a track or artist to get started. We'll find the best karaoke, synced, or plain lyrics for you.</p>
+        </div>
+
+        <div id="loader" class="loader">
+          <div class="spinner"></div>
+        </div>
+
+        <div id="lyrics-view" class="lyrics-view">
+          <div id="track-info" class="track-info"></div>
+
+          <div class="controls-bar">
+            <div class="tabs">
+              <button class="tab active" data-type="karaoke">Karaoke</button>
+              <button class="tab" data-type="synced">Synced</button>
+              <button class="tab" data-type="plain">Plain</button>
+            </div>
+            <div class="controls-actions" style="display: none">
+              <button id="copy-button" class="copy-button">
+                <i data-lucide="copy"></i>
+                Copy
+              </button>
+              <button id="save-button" class="copy-button">
+                <i data-lucide="download"></i>
+                Save
+              </button>
+            </div>
+          </div>
+
+          <div id="lyrics-content" class="lyrics-content"></div>
+        </div>
+      </main>
+
+      <footer>
+        <p>&copy; 2026 SyncLRC. Built with ❤️ by <a href="https://github.com/TharukRenuja" target="_blank">Tharuk Renuja</a></p>
+      </footer>
+    </div>
+
+    <div id="api-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2><i data-lucide="code"></i> Developer API</h2>
+          <button id="close-modal" class="close-btn"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body api-modal-body">
+          <div class="api-tabs">
+            <button class="api-tab active" data-target="api-search">Search API</button>
+            <button class="api-tab" data-target="api-lyrics">Lyrics API</button>
+            <button class="api-tab" data-target="api-by-id">Lyrics By ID</button>
+          </div>
+
+          <div class="api-section active" id="api-search">
+            <div class="api-endpoint-header">
+              <span class="method get">GET</span>
+              <span class="url">https://api.synclrc.dev/search</span>
+            </div>
+            <p>Search for tracks and get their lyrics availability.</p>
+
+            <div class="rate-limit-badge">
+              <i data-lucide="zap"></i> Limit: 30 requests / minute
+            </div>
+
+            <h4>Parameters</h4>
+            <table class="api-table">
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td><code>q</code></td>
+                <td>string</td>
+                <td>(Required) Search term</td>
+              </tr>
+              <tr>
+                <td><code>limit</code></td>
+                <td>number</td>
+                <td>(Optional) Max results (default: 10)</td>
+              </tr>
+              <tr>
+                <td><code>offset</code></td>
+                <td>number</td>
+                <td>(Optional) Results offset (default: 0)</td>
+              </tr>
+            </table>
+
+            <h4>Example Response</h4>
+            <pre class="code-block"><code>{
+  "results": [
+    {
+      "id": "a1b2c3d4e5f6g7h8...",
+      "track": "Song Name",
+      "artist": "Artist Name",
+      "album": "Album Name",
+      "duration": 215,
+      "instrumental": false,
+      "lyrics": {
+        "plain": "Lyrics...",
+        "synced": "[00:00.00]...",
+        "karaoke": "[00:00.00] &lt;00:00.05&gt;..."
+      }
+    }
+  ],
+  "total": 1,
+  "limit": 10
+}</code></pre>
+          </div>
+
+          <div class="api-section" id="api-lyrics">
+            <div class="api-endpoint-header">
+              <span class="method get">GET</span>
+              <span class="url">https://api.synclrc.dev/lyrics</span>
+            </div>
+            <p>Fetch lyrics for a specific track.</p>
+
+            <div class="rate-limit-badge">
+              <i data-lucide="zap"></i> Limit: 30 requests / minute
+            </div>
+
+            <h4>Parameters</h4>
+            <table class="api-table">
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td><code>track</code></td>
+                <td>string</td>
+                <td>(Required) Song name</td>
+              </tr>
+              <tr>
+                <td><code>artist</code></td>
+                <td>string</td>
+                <td>(Required) Artist name</td>
+              </tr>
+            </table>
+
+            <h4>Optional Parameters</h4>
+            <table class="api-table">
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td><code>type</code></td>
+                <td>string</td>
+                <td>Filter by format: <code>karaoke</code>, <code>synced</code>, or <code>plain</code></td>
+              </tr>
+              <tr>
+                <td><code>album</code></td>
+                <td>string</td>
+                <td>Album name (improves matching)</td>
+              </tr>
+              <tr>
+                <td><code>duration</code></td>
+                <td>number</td>
+                <td>Track duration in seconds (improves matching)</td>
+              </tr>
+            </table>
+
+            <h4>Example Response</h4>
+            <pre class="code-block"><code>{
+  "id": "a1b2c3d4e5f6g7h8...",
+  "track": "Song Name",
+  "artist": "Artist Name",
+  "album": "Album Name",
+  "duration": 215,
+  "instrumental": false,
+  "karaoke": "[00:00.00] &lt;00:00.05&gt;...",
+  "synced": "[00:00.00]...",
+  "plain": "Lyrics..."
+}</code></pre>
+          </div>
+
+          <div class="api-section" id="api-by-id">
+            <div class="api-endpoint-header">
+              <span class="method get">GET</span>
+              <span class="url">https://api.synclrc.dev/lyrics/{id}</span>
+            </div>
+            <p>Fetch lyrics by the track's canonical ID (returned by search or lyrics endpoints).</p>
+
+            <div class="rate-limit-badge">
+              <i data-lucide="zap"></i> Limit: 30 requests / minute
+            </div>
+
+            <h4>Parameters</h4>
+            <table class="api-table">
+              <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+              <tr>
+                <td><code>id</code></td>
+                <td>string</td>
+                <td>(Required) 32-character hex canonical ID</td>
+              </tr>
+              <tr>
+                <td><code>type</code></td>
+                <td>string</td>
+                <td>(Optional) Filter by format: <code>karaoke</code>, <code>synced</code>, or <code>plain</code></td>
+              </tr>
+            </table>
+
+            <h4>Example Response</h4>
+            <pre class="code-block"><code>{
+  "id": "a1b2c3d4e5f6g7h8...",
+  "track": "Song Name",
+  "artist": "Artist Name",
+  "album": "Album Name",
+  "duration": 215,
+  "instrumental": false,
+  "karaoke": "[00:00.00] &lt;00:00.05&gt;...",
+  "synced": "[00:00.00]...",
+  "plain": "Lyrics..."
+}</code></pre>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest" defer></script>
+    <script src="static/js/script.js" defer></script>
+  </body>
+</html>
