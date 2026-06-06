@@ -1,5 +1,5 @@
 const DEV = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:';
-const API_BASE = DEV ? 'http://localhost:8787' : location.origin;
+const API_BASE = DEV ? 'http://localhost:8787' : 'https://api.synclrc.dev';
 
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
