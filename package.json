@@ -1,0 +1,11 @@
+{
+  "name": "synclrc",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:create": "wrangler d1 create synclrc-db",
+    "d1:apply": "wrangler d1 execute synclrc-db --file=src/schema.sql"
+  }
+}

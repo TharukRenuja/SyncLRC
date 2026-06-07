@@ -1,0 +1,69 @@
+export const CREDIT_PATTERNS = [
+  // English - require colon/dash after keyword (credit format)
+  /^[ \t]*(lyrics?|composed|arranged|produced|mixed|mastered|written|performed|vocals?|music|recorded|engineered)[ \t]+(by|at)[ \t]*[:：-]/i,
+  /^[ \t]*co-produced[ \t]+(by|at)[ \t]*[:：-]/i,
+  /^[ \t]*(executive|assistant)[ \t]+(producer|engineer)[ \t]*[:：-]/i,
+  /^[ \t]*(remix|feature|programmed)[ \t]+(by|at)[ \t]*[:：-]/i,
+  /^[ \t]*backing[ \t]+vocals?[ \t]*[:：-]/i,
+  /^[ \t]*sound[ \t]+engineer[ \t]*[:：-]/i,
+  /^[ \t]*(album|artist|track)[ \t]+by[ \t]*[:：-]/i,
+  // Instrument credits (typically at line start with colon)
+  /^[ \t]*(guitar|drums?|bass|piano|keyboards?|violin|cello|saxophone|trumpet|flute|synth(esizer)?s?)[ \t]*[:：-]/i,
+  // Studio / production credits
+  /^[ \t]*(production|label|recording|mastering|studio|credits?)[ \t]*[:：-]/i,
+  // Chinese
+  /^[ \t]*(作词|作曲|编曲|制作人|音频工程师|母带工程师|人声|混音师|混音|录音|翻译|翻唱|监制|和声|作詞|編曲|歌い手|ボーカル|ミックス|マスタリング|演奏|制作|編集|プロデューサー|レコーディング|エンジニア|翻訳者|작사|작곡|편곡|보컬|프로듀싱|믹싱|마스터링|번역|녹음|프로듀서|발매|코러스)[ \t]*[:：]/,
+  /^[ \t]*(词|曲|歌|唄|OP|SP)[ \t]*[：:]/,
+  /^[ \t]*(歌词|出品|版权|企划|出品人|가사|엔지니어|레이블|레코딩|작곡가|편곡가)[ \t]*[：:]/,
+  /^[ \t]*(吉他|鼓|合成器|贝斯|钢琴|键盘|发行|ギター|ドラム|ベース|ピアノ|キーボード|기타|드럼|베이스|피아노|신디사이저)[ \t]*[：:]/,
+  // Japanese/Korean bare keyword at start (less common but safe with colon)
+  /^[ \t]*(歌い手|ボーカル|演奏|編集|翻訳|코러스|엔지니어|앨범|아티스트|제목|바이올린|첼로|섹소폰|트럼펫|플루트)[ \t]*[：:]/,
+  // Spanish
+  /^[ \t]*(letra|letras|compuesta|arreglada|producida|mezclada|masterizada|escrita|interpretada)[ \t]+(por|en)[ \t]*[:：-]/i,
+  /^[ \t]*grabado[ \t]+(en|a)[ \t]*[:：-]/i,
+  /^[ \t]*(producido|mezclado)[ \t]+(por|en)[ \t]*[:：-]/i,
+  /^[ \t]*música[ \t]+(por|de)[ \t]*[:：-]/i,
+  // French
+  /^[ \t]*(paroles|composé|arrangé|produit|mixé|masterisé|écrit|interprété)[ \t]+(par|à)[ \t]*[:：-]/i,
+  /^[ \t]*enregistré[ \t]+(à|au)[ \t]*[:：-]/i,
+  /^[ \t]*(musique|producteur)[ \t]+(par|de)[ \t]*[:：-]/i,
+  // German
+  /^[ \t]*(songtext|komponiert|arrangiert|produziert|gemischt|gemastert|geschrieben|gesungen)[ \t]+(von|in|zu)[ \t]*[:：-]/i,
+  /^[ \t]*musik[ \t]+(von|aus)[ \t]*[:：-]/i,
+  // Italian
+  /^[ \t]*(parole|composto|arrangiato|prodotto|mixato|masterizzato|scritto|interpretato)[ \t]+(di|da|presso)[ \t]*[:：-]/i,
+  /^[ \t]*musica[ \t]+(di|da)[ \t]*[:：-]/i,
+  // Portuguese
+  /^[ \t]*(letra|composta|arranjada|produzida|mixada|masterizada|escrita|interpretada)[ \t]+(por|em)[ \t]*[:：-]/i,
+  /^[ \t]*gravado[ \t]+(em|a)[ \t]*[:：-]/i,
+  // Russian
+  /^[ \t]*(слова|музыка|аранжировка|продюсер|сведение|мастеринг|вокал|гитара|барабаны|бас|клавишные|запись|студия|исполнитель|звукорежиссер|автор[ \t]+текста|композитор|бэк-вокал|ударные|скрипка|художник|дизайн|аранжировщик)[ \t]*[:：-]/i,
+  /^[ \t]*(альбом|трек|название|исполнитель)[ \t]*[:：-]/i,
+  // Hindi
+  /^[ \t]*(बोल|संगीत|रचना|निर्माता|उत्पादन|रिकॉर्डिंग|स्टूडियो|गायक|गिटार|ड्रम|पियानो|वायलिन|एल्बम|कलाकार)[ \t]*[:：-]/,
+  // Arabic
+  /^[ \t]*(كلمات|ألحان|توزيع|إنتاج|تسجيل|استوديو|غناء|عازف|جيتار|طبل|بيانو|كمان|موسيقى|ألبوم|فنان)[ \t]*[:：-]/,
+  // Tamil
+  /^[ \t]*(பாடல்|இசை|பாடியவர்|வரிகள்|இசையமைப்பு)[ \t]*[:：-]/,
+  // Thai
+  /^[ \t]*(เนื้อร้อง|ทำนอง|เรียบเรียง|ขับร้อง|ดนตรี)[ \t]*[:：-]/,
+  // Vietnamese
+  /^[ \t]*(lời[ \t]+bài[ \t]+hát|nhạc[ \t]+sĩ|ca[ \t]+sĩ|hòa[ \t]+âm|phối[ \t]+khí|sản[ \t]+xuất)[ \t]*[:：-]/i,
+  // Indonesian / Malay
+  /^[ \t]*(lirik|penyanyi|pencipta|musik|produksi|rekaman|gitar|drum|bas)[ \t]*[:：-]/i,
+  // Tagalog / Filipino
+  /^[ \t]*(titik|awit|musika|pagkakaayos|nirekord[ \t]+sa|gitara|tambol)[ \t]*[:：-]/i,
+  // Burmese
+  /^[ \t]*(တေးဆို|တေးရေး|တေးဂီတ|တေးအယ်လ်ဘမ်)[ \t]*[:：-]/,
+  // Standard LRC metadata tags
+  /^\[(ar|ti|al|au|by|offset|re|ve|la|length|id|encoding|bn):/i,
+  /^\[(ar|ti|al|au|by|offset|re|ve|la|length|id|encoding|bn)\]/i
+];
+
+export function sanitizeLyrics(lyrics) {
+  if (!lyrics) return lyrics;
+  return lyrics.split('\n').filter(line => {
+    const text = line.replace(/\[\d+:\d{2}[.:]\d+\]/g, '').replace(/<\d+:\d{2}[.:]\d+>/g, '').trim();
+    return text && !CREDIT_PATTERNS.some(p => p.test(text));
+  }).join('\n');
+}

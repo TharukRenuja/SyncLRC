@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "name": "synclrc",
+  "main": "src/index.js",
+  "compatibility_date": "2025-02-01",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "UPSTREAM_URL": "https://your-upstream.api",
+    "UPSTREAM_SECRET": "your-upstream-secret"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "KV_CACHE",
+      "id": "your-kv-id"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "D1_DB",
+      "database_name": "synclrc-db",
+      "database_id": "your-d1-id"
+    }
+  ]
+}
