@@ -450,45 +450,6 @@ header {
 }
 
 /* Mobile Adjustments */
-@media (max-width: 600px) {
-  .app-container {
-    padding: 1rem;
-  }
-
-  header {
-    margin-bottom: 2rem;
-  }
-
-  .track-info {
-    gap: 1rem;
-  }
-
-  .track-info img {
-    width: 64px;
-    height: 64px;
-  }
-
-  .track-details h2 {
-    font-size: 1.25rem;
-  }
-
-  .track-details p {
-    font-size: 0.95rem;
-  }
-
-  .tabs {
-    gap: 1rem;
-  }
-
-  .tab {
-    font-size: 0.85rem;
-  }
-
-  .lyrics-content {
-    font-size: 1rem;
-  }
-}
-
 footer {
   margin-top: 2rem;
   padding-top: 2rem;
@@ -647,10 +608,27 @@ footer a:hover {
   color: #16a34a;
 }
 
-.url {
+.endpoint {
+  font-family: monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.path {
   font-family: monospace;
   font-size: 1.1rem;
   font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
 }
 
 .rate-limit-badge {
@@ -712,4 +690,57 @@ footer a:hover {
   white-space: pre-wrap;
   color: var(--text-primary);
   border: 1px solid var(--border-color);
+}
+
+@media (max-width: 600px) {
+  .app-container {
+    padding: 1rem;
+  }
+
+  header {
+    margin-bottom: 2rem;
+  }
+
+  .track-info {
+    gap: 1rem;
+  }
+
+  .track-info img {
+    width: 64px;
+    height: 64px;
+  }
+
+  .track-details h2 {
+    font-size: 1.25rem;
+  }
+
+  .track-details p {
+    font-size: 0.95rem;
+  }
+
+  .tabs {
+    gap: 1rem;
+  }
+
+  .tab {
+    font-size: 0.85rem;
+  }
+
+  .lyrics-content {
+    font-size: 1rem;
+  }
+
+  .api-endpoint-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .endpoint {
+    font-size: 0.8rem;
+  }
+
+  .path {
+    font-size: 0.95rem;
+    flex: 0 0 100%;
+  }
 }

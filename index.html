@@ -5,14 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SyncLRC — Lyrics Finder</title>
     <link rel="icon" type="image/x-icon" href="static/favicon.ico" />
-    <meta name="description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics." />
-    <meta name="keywords" content="lyrics, karaoke, lrc, synced lyrics, plain lyrics, music lyrics, song lyrics, lyrics finder, word by word karaoke" />
+    <link rel="canonical" href="https://synclrc.dev/" />
+    <meta name="description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics. Search and export lyrics in multiple formats for free." />
+    <meta name="keywords" content="lyrics, karaoke, lrc, synced lyrics, plain lyrics, music lyrics, song lyrics, lyrics finder, word by word karaoke, lyrics api" />
     <meta name="author" content="Tharuk Renuja" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta name="application-name" content="SyncLRC" />
     <meta property="og:title" content="SyncLRC — Lyrics Finder" />
     <meta property="og:description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://synclrc.tharuk.pro" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:url" content="https://synclrc.dev" />
+    <meta property="og:site_name" content="SyncLRC" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="SyncLRC — Lyrics Finder" />
     <meta name="twitter:description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics." />
     <link rel="stylesheet" href="static/css/style.css" />
@@ -104,7 +110,7 @@
           <div class="api-section active" id="api-search">
             <div class="api-endpoint-header">
               <span class="method get">GET</span>
-              <span class="url">https://api.synclrc.dev/search</span>
+              <span class="endpoint">api.synclrc.dev</span><span class="path">/search</span>
             </div>
             <p>Search for tracks and get their lyrics availability.</p>
 
@@ -161,7 +167,7 @@
           <div class="api-section" id="api-lyrics">
             <div class="api-endpoint-header">
               <span class="method get">GET</span>
-              <span class="url">https://api.synclrc.dev/lyrics</span>
+              <span class="endpoint">api.synclrc.dev</span><span class="path">/lyrics</span>
             </div>
             <p>Fetch lyrics for a specific track.</p>
 
@@ -229,7 +235,7 @@
           <div class="api-section" id="api-by-id">
             <div class="api-endpoint-header">
               <span class="method get">GET</span>
-              <span class="url">https://api.synclrc.dev/lyrics/{id}</span>
+              <span class="endpoint">api.synclrc.dev</span><span class="path">/lyrics/{id}</span>
             </div>
             <p>Fetch lyrics by the track's canonical ID (returned by search or lyrics endpoints).</p>
 

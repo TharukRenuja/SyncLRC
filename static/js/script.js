@@ -1,5 +1,4 @@
-const DEV = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:';
-const API_BASE = DEV ? 'http://localhost:8787' : 'https://api.synclrc.dev';
+const API_BASE = 'https://api.synclrc.dev';
 
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
