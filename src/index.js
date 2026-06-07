@@ -103,7 +103,8 @@ async function fetchFromUpstream(track, artist, env) {
     headers: { 'X-SyncLRC-Secret': env.UPSTREAM_SECRET }
   });
   if (resp.status !== 200) return null;
-  return await resp.json();
+  const data = await resp.json();
+  return data.lyrics || null;
 }
 
 function jsonResponse(data, status = 200, cacheControl = 'no-cache') {
@@ -176,7 +177,7 @@ async function readFromCache(hash, env) {
   return await env.KV_CACHE.get(`lyrics:${hash}`, 'json');
 }
 
-function buildCombined(lrclibData, upstreamData) {
+function buildCombined(lrclibData, karaokeLyrics) {
   const combined = { karaoke: null, synced: null, plain: null };
 
   if (lrclibData) {
@@ -184,13 +185,10 @@ function buildCombined(lrclibData, upstreamData) {
     combined.plain = lrclibData.plainLyrics || null;
   }
 
-  if (upstreamData) {
-    combined.karaoke = upstreamData.karaoke || null;
-    combined.synced = combined.synced || upstreamData.synced || null;
-    combined.plain = combined.plain || upstreamData.plain || null;
+  if (karaokeLyrics) {
+    combined.karaoke = sanitizeLyrics(karaokeLyrics);
   }
 
-  if (combined.karaoke) combined.karaoke = sanitizeLyrics(combined.karaoke);
   if (combined.synced) combined.synced = sanitizeLyrics(combined.synced);
   if (combined.plain) combined.plain = sanitizeLyrics(combined.plain);
 
@@ -201,7 +199,6 @@ function buildCombined(lrclibData, upstreamData) {
 
 async function fetchTrackLyrics(track, artist, album, duration, env) {
   let lrclibData = null;
-  let upstreamData = null;
 
   // fetch from LRCLib (synced + plain)
   try {
@@ -209,21 +206,20 @@ async function fetchTrackLyrics(track, artist, album, duration, env) {
   } catch {}
 
   // fetch from upstream for karaoke
-  try {
-    upstreamData = await fetchFromUpstream(track, artist, env);
-  } catch {}
+  let karaokeLyrics;
+  try { karaokeLyrics = await fetchFromUpstream(track, artist, env); } catch {}
 
   if (lrclibData?.instrumental) {
     return { combined: { karaoke: null, synced: null, plain: null }, instrumental: true, meta: { album: lrclibData.albumName || null, duration: lrclibData.duration || null } };
   }
 
-  const combined = buildCombined(lrclibData, upstreamData);
+  const combined = buildCombined(lrclibData, karaokeLyrics);
 
   if (!combined.karaoke && !combined.synced && !combined.plain) return null;
 
   const meta = {
-    album: lrclibData?.albumName || upstreamData?.album || album || null,
-    duration: lrclibData?.duration || upstreamData?.duration || duration ? Number(duration) : null,
+    album: lrclibData?.albumName || album || null,
+    duration: lrclibData?.duration || duration ? Number(duration) : null,
     instrumental: false
   };
 
@@ -303,12 +299,12 @@ async function handleGetLyrics(id, url, env) {
     if (rawLrc) {
       const lyricsId = await generateHash(canonTrack, canonArtist);
 
-      let upstreamData;
-      try { upstreamData = await fetchFromUpstream(canonTrack, canonArtist, env); } catch {}
-      const combined = buildCombined(lrclibData, upstreamData);
+      let karaokeLyrics;
+      try { karaokeLyrics = await fetchFromUpstream(canonTrack, canonArtist, env); } catch {}
+      const combined = buildCombined(lrclibData, karaokeLyrics);
       const meta = {
-        album: lrclibData.albumName || upstreamData?.album || null,
-        duration: lrclibData.duration || upstreamData?.duration || null,
+        album: lrclibData.albumName || null,
+        duration: lrclibData.duration || null,
         instrumental: false
       };
 
@@ -344,15 +340,15 @@ async function handleGetLyrics(id, url, env) {
     return buildResponse(cached, reqType, canonHash, canonicalTrack, canonicalArtist, meta);
   }
 
-  let upstreamData;
-  try { upstreamData = await fetchFromUpstream(canonicalTrack, canonicalArtist, env); } catch {}
-  if (!upstreamData) {
+  let karaokeLyrics;
+  try { karaokeLyrics = await fetchFromUpstream(canonicalTrack, canonicalArtist, env); } catch {}
+  if (!karaokeLyrics) {
     await env.KV_CACHE.put(`neg:${normalized}`, '1', { expirationTtl: 300 });
     return errorResponse('Lyrics not found', 404);
   }
 
-  const combined = buildCombined(null, upstreamData);
-  if (!combined.karaoke && !combined.synced && !combined.plain) {
+  const combined = buildCombined(null, karaokeLyrics);
+  if (!combined.karaoke) {
     await env.KV_CACHE.put(`neg:${normalized}`, '1', { expirationTtl: 300 });
     return errorResponse('Lyrics not found', 404);
   }
