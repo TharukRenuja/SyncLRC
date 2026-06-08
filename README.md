@@ -1,14 +1,17 @@
+<img src="https://i.ibb.co/SXfGQPLw/339631bdecf2.png" align="right" width="250" alt="SyncLRC">
+
 # SyncLRC
 
-SyncLRC is a simple, minimalist lyrics finder designed to help you discover and export lyrics in multiple formats. Whether you need word-by-word Karaoke lyrics, time-synced LRC files, or simple plain text, SyncLRC has you covered.
+SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discover and export lyrics** in multiple formats. Whether you need word-by-word **(Karaoke)** lyrics, time-synced **(Synced)** LRC files, or simple text **(Plain)**, SyncLRC has you covered.
+
+<a href="https://github.com/TharukRenuja/SyncLRC/releases/latest"><img src="https://img.shields.io/github/v/release/TharukRenuja/SyncLRC?label=Release&style=for-the-badge&color=E53935" alt="Release"></a> <a href="./LICENSE"><img src="https://img.shields.io/badge/License-AGPLv3-FFD700.svg?style=for-the-badge" alt="AGPLv3"></a> <img src="https://img.shields.io/badge/Powered%20by%20Cloudflare-F38020?style=for-the-badge&logo=Cloudflare&logoColor=white" alt="Cloudflare"> <img src="https://img.shields.io/badge/REST%20API-00BFA5?style=for-the-badge&logo=lightning&logoColor=white" alt="REST API">
 
 ## Features
 
 - **Triple Format Support**: Fetch lyrics in Karaoke (Enhanced LRC), Synced (Standard LRC), and Plain Text formats.
 - **Clean Sanitization**: Automatically filters out metadata and credit clutter (lyricists, composers, etc.) for a distraction-free experience.
-- **Always-on Karaoke**: Karaoke is fetched on every request alongside synced and plain — no waiting for upgrades.
 - **Developer API**: Built-in `/search` and `/lyrics` endpoints for programmatic access.
-- **Web Access**: General users can easily search for tracks and view all lyrics formats directly through the intuitive [web interface](https://synclrc.dev).
+- **Web Access**: Try it at **[synclrc.dev](https://synclrc.dev)**
 
 ## Developer API
 
@@ -76,12 +79,12 @@ SyncLRC is a simple, minimalist lyrics finder designed to help you discover and 
 
 Contributions are welcome!
 
-1.  **Improvements**: Feel free to open an issue or pull request.
+1.  **Improvements**: Feel free to open an [issue](https://github.com/TharukRenuja/SyncLRC/issues) or [pull request](https://github.com/TharukRenuja/SyncLRC/pulls).
 2.  **Sanitization**: We maintain a list of strings to filter out (like "Synced by", "Translated by"). If you find more clutter in lyrics, please add them to the sanitization list in `src/sanitize.js`.
 
 ## Legal Disclaimer
 
-SyncLRC acts as an easy gateway for developers, as there is no open and free enhanced lyrics provider available. SyncLRC does not permanently store or host copyrighted lyrics. All lyric content is fetched on-demand from third-party sources and returned directly to the requesting client. A short-lived transient cache exists solely to reduce redundant outbound API calls and is automatically evicted.
+SyncLRC acts as an easy gateway for developers, as there is no open and free word-by-word (karaoke-style) synced lyrics provider available. SyncLRC does not permanently store or host copyrighted lyrics. All lyric content is fetched on-demand from third-party sources and returned directly to the requesting client. A short-lived transient cache exists solely to reduce redundant outbound API calls and is automatically evicted.
 
 ## Credits
 
