@@ -57,7 +57,9 @@ export const CREDIT_PATTERNS = [
   /^[ \t]*(တေးဆို|တေးရေး|တေးဂီတ|တေးအယ်လ်ဘမ်)[ \t]*[:：-]/,
   // Standard LRC metadata tags
   /^\[(ar|ti|al|au|by|offset|re|ve|la|length|id|encoding|bn):/i,
-  /^\[(ar|ti|al|au|by|offset|re|ve|la|length|id|encoding|bn)\]/i
+  /^\[(ar|ti|al|au|by|offset|re|ve|la|length|id|encoding|bn)\]/i,
+  // Track/Artist credit line (e.g., "Song Name - Artist Name")
+  /^[A-Z][A-Za-z\s'.!?]*[-–—]\s*[A-Z][A-Za-z\s'.!?]+$/
 ];
 
 export function sanitizeLyrics(lyrics) {
