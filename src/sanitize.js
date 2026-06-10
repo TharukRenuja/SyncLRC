@@ -60,8 +60,8 @@ export const CREDIT_PATTERNS = [
   /^\[(ar|ti|al|au|by|offset|re|ve|la|length|id|encoding|bn)\]/i,
   // Track/Artist credit line (e.g., "Song Name - Artist Name")
   /^[A-Z][A-Za-z\s'.!?]*[-–—]\s*[A-Z][A-Za-z\s'.!?]+$/,
-  // Explicit/Clean tag in title-artist line (e.g., "Song Name (Explicit) - Artist")
-  /\([ \t]*(?:Explicit)[ \t]*\)[ \t]*[-–—]/i,
+  // Song with parenthetical tag before artist (e.g., "Song (Tag) - Artist")
+  /^.+?[ \t]*\([^)]*\)[ \t]*[-–—]\s*.+$/,
 ];
 
 export function sanitizeLyrics(lyrics) {
