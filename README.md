@@ -1,4 +1,7 @@
-<img src="https://i.ibb.co/SXfGQPLw/339631bdecf2.png" align="right" width="250" alt="SyncLRC">
+<picture>
+  <source media="(max-width: 600px)" srcset="https://i.ibb.co/SXfGQPLw/339631bdecf2.png" width="120">
+  <img src="https://i.ibb.co/SXfGQPLw/339631bdecf2.png" align="right" width="250" alt="SyncLRC">
+</picture>
 
 # SyncLRC
 
@@ -15,10 +18,12 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
 
 ## Developer API
 
-### Endpoints
-
 #### 1. Search Tracks & Lyrics
+
 `GET /search?q={query}&limit={limit}&offset={offset}`
+
+<details>
+<summary><b>Parameters & Response</b></summary>
 
 **Parameters:**
 - `q`: (Required) Search term (track or artist name).
@@ -42,6 +47,7 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
   ]
 }
 ```
+</details>
 
 #### 2. Fetch Specific Lyrics
 
@@ -49,18 +55,21 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
 
 `GET /lyrics/{id}?type={type}`
 
-- `type`: (Optional) `karaoke`, `synced`, or `plain`.
-
 **Fetch by Track & Artist (query params)**
 
 `GET /lyrics?track={track}&artist={artist}&type={type}&album={album}&duration={duration}`
 
+<details>
+<summary><b>Parameters & Response</b></summary>
+
+- `type`: (Optional) `karaoke`, `synced`, or `plain`.
 - `track`: (Required) Song name.
 - `artist`: (Required) Artist name.
 - `type`: (Optional) `karaoke`, `synced`, or `plain`.
 - `album`: (Optional) Album name for more accurate matching.
 - `duration`: (Optional) Track duration in seconds for more accurate matching.
 
+**Response:**
 ```json
 {
   "id": "abc123...",
@@ -74,6 +83,7 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
   "plain": "Lyrics text..."
 }
 ```
+</details>
 
 ## Contributing
 
@@ -82,13 +92,14 @@ Contributions are welcome!
 1.  **Improvements**: Feel free to open an [issue](https://github.com/TharukRenuja/SyncLRC/issues) or [pull request](https://github.com/TharukRenuja/SyncLRC/pulls).
 2.  **Sanitization**: We maintain a list of strings to filter out (like "Synced by", "Translated by"). If you find more clutter in lyrics, please add them to the sanitization list in `src/sanitize.js`.
 
+---
+
 ## Legal Disclaimer
 
 SyncLRC acts as an easy gateway for developers, as there is no open and free word-by-word (karaoke-style) synced lyrics provider available. SyncLRC does not permanently store or host copyrighted lyrics. All lyric content is fetched on-demand from third-party sources and returned directly to the requesting client. A short-lived transient cache exists solely to reduce redundant outbound API calls and is automatically evicted.
 
+---
+
 ## Credits
 
 This project uses the [iTunes Search API](https://performance-partners.apple.com/search-api) to fetch track metadata, [LRCLIB](https://lrclib.net) as the primary lyrics source, and [LDDC](https://github.com/chenmozhijin/LDDC) + [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from `Netease`, `QQ Music`, `Kugou`, and `Musixmatch`.
-
----
-Built with ❤️ by [Tharuk Renuja](https://github.com/TharukRenuja)
