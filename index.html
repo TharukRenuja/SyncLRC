@@ -34,7 +34,7 @@
       <header>
         <div class="logo">SyncLRC</div>
         <div class="header-actions">
-          <button id="theme-toggle" class="theme-toggle"></button>
+          <button id="theme-toggle" class="theme-toggle" title="Toggle theme"></button>
           <button id="api-info-btn" class="header-btn" title="Developer API">
             <i data-lucide="info"></i>
           </button>
@@ -48,7 +48,7 @@
         <div class="search-wrapper">
           <div class="search-bar">
             <i data-lucide="search"></i>
-            <input type="text" id="search-input" placeholder="Search for tracks or artists..." autocomplete="off" />
+            <input type="text" id="search-input" placeholder="Search for tracks or artists..." autocomplete="off" title="Search (/) " />
             <button id="clear-search" class="clear-search" style="display: none">
               <i data-lucide="x"></i>
             </button>
@@ -71,16 +71,16 @@
 
           <div class="controls-bar">
             <div class="tabs">
-              <button class="tab active" data-type="karaoke">Karaoke</button>
-              <button class="tab" data-type="synced">Synced</button>
-              <button class="tab" data-type="plain">Plain</button>
+              <button class="tab active" data-type="karaoke" title="Karaoke">Karaoke</button>
+              <button class="tab" data-type="synced" title="Synced">Synced</button>
+              <button class="tab" data-type="plain" title="Plain">Plain</button>
             </div>
             <div class="controls-actions" style="display: none">
-              <button id="copy-button" class="copy-button">
+              <button id="copy-button" class="copy-button" title="Copy">
                 <i data-lucide="copy"></i>
                 Copy
               </button>
-              <button id="save-button" class="copy-button">
+              <button id="save-button" class="copy-button" title="Save">
                 <i data-lucide="download"></i>
                 Save
               </button>
@@ -89,10 +89,12 @@
 
           <div id="lyrics-content" class="lyrics-content"></div>
         </div>
+
+        <div id="shortcuts-hint" class="shortcuts-hint"></div>
       </main>
 
       <footer>
-        <p>&copy; 2026 SyncLRC. Built with ❤️ by <a href="https://github.com/TharukRenuja" target="_blank">Tharuk Renuja</a></p>
+        <p>&copy; 2026 SyncLRC. All rights to lyrics belong to their respective artists and publishers.</p>
       </footer>
     </div>
 

@@ -57,6 +57,8 @@ body {
 
 main {
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Header */
@@ -170,7 +172,16 @@ header {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   z-index: 50;
   overflow: hidden;
-  display: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.results-dropdown.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .result-item {
@@ -328,11 +339,76 @@ header {
 }
 
 .lyrics-content {
-  white-space: pre-wrap;
   font-size: 1.1rem;
   line-height: 1.8;
   color: var(--text-primary);
   padding-bottom: 2rem;
+}
+
+.lyrics-container {
+  max-height: 50vh;
+  overflow: hidden;
+  position: relative;
+  transition: max-height 0.3s ease;
+}
+
+.lyrics-container.expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+.lyrics-container::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, var(--bg-color));
+  pointer-events: none;
+}
+
+.lyrics-container.expanded::after {
+  display: none;
+}
+
+.lyric-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding: 0.2rem 0;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.lyric-line.expanded {
+  white-space: pre-wrap;
+}
+
+.lyric-line:hover {
+  background: var(--input-bg);
+}
+
+.lyrics-toggle {
+  display: none;
+  width: 100%;
+  padding: 0.75rem;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.lyrics-toggle:hover {
+  background: var(--input-bg);
+  color: var(--text-primary);
 }
 
 .karaoke-timestamp {
@@ -372,6 +448,30 @@ header {
   font-size: 1.1rem;
   max-width: 400px;
   line-height: 1.6;
+}
+
+.shortcuts-hint {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  margin-top: 1.5rem;
+}
+
+.shortcuts-hint span {
+  white-space: nowrap;
+}
+
+.shortcuts-hint kbd {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.75rem;
 }
 
 @keyframes fadeIn {
@@ -452,21 +552,15 @@ header {
 /* Mobile Adjustments */
 footer {
   margin-top: 2rem;
-  padding-top: 2rem;
+  padding: 2rem;
   border-top: 1px solid var(--border-color);
   text-align: center;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
-footer a {
-  color: var(--text-primary);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-footer a:hover {
-  text-decoration: underline;
+footer p {
+  line-height: 1.5;
 }
 
 /* Modal */
@@ -699,6 +793,10 @@ footer a:hover {
 
   header {
     margin-bottom: 2rem;
+  }
+
+  .lyrics-container {
+    max-height: 40vh;
   }
 
   .track-info {
