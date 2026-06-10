@@ -131,6 +131,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.status === 429) {
                 throw { type: 'rate_limit' };
             }
+            if (response.status === 404) {
+                throw { type: 'not_found' };
+            }
             if (!response.ok) {
                 throw { type: 'server_error' };
             }
@@ -212,13 +215,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderLyrics = (type) => {
         currentActiveType = type;
+
+        if (!currentRawLyrics) {
+            lyricsContent.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="18" r="4"/><path d="M12 18V2l7 4"/></svg>
+                    <h3>No lyrics available</h3>
+                    <p>This song doesn't have lyrics in our sources yet. Try a different search.</p>
+                </div>
+            `;
+            document.querySelector('.controls-actions').style.display = 'none';
+            updateIcons();
+            return;
+        }
         
         const typeWeights = { 'karaoke': 3, 'synced': 2, 'plain': 1 };
-        const availableWeight = typeWeights[currentLyricsType] || 1;
+        const availableWeight = typeWeights[currentLyricsType] || 0;
         const requestedWeight = typeWeights[type] || 1;
 
         if (requestedWeight > availableWeight) {
-            const formatNames = { 'karaoke': 'Karaoke', 'synced': 'Synced' };
+            const formatNames = { 'karaoke': 'Karaoke', 'synced': 'Synced', 'plain': 'Plain' };
             const requestedName = formatNames[type];
             
             lyricsContent.innerHTML = `
@@ -234,7 +250,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        document.querySelector('.controls-actions').style.display = 'flex';
         const lyrics = processLyrics(currentRawLyrics, type);
         if (!lyrics) return;
 
@@ -276,6 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        document.querySelector('.controls-actions').style.display = 'flex';
         updateIcons();
     };
 
