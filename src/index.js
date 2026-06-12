@@ -112,6 +112,13 @@ function pickType(combined) {
 function buildResponse(combined, reqType, id, track, artist, meta) {
   const base = { album: meta?.album || null, duration: meta?.duration || null, instrumental: meta?.instrumental || false };
 
+  if (combined.karaoke) {
+    const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
+    combined.synced = sanitizeLyrics(synced) || null;
+    const [plain] = convertLyrics(combined.karaoke, 'karaoke', 'plain');
+    combined.plain = sanitizeLyrics(plain) || null;
+  }
+
   if (reqType) {
     const lyrics = combined[reqType] || combined.synced || combined.plain;
     const type = pickType(combined);
@@ -155,27 +162,20 @@ async function readFromCache(hash, env) {
 function buildCombined(lrclibData, karaokeLyrics) {
   const combined = { karaoke: null, synced: null, plain: null };
 
-  if (lrclibData) {
-    combined.synced = lrclibData.syncedLyrics || null;
-    combined.plain = lrclibData.plainLyrics || null;
-  }
-
   if (karaokeLyrics) {
     combined.karaoke = sanitizeLyrics(karaokeLyrics);
   }
 
-  if (combined.synced) combined.synced = sanitizeLyrics(combined.synced);
-  if (combined.plain) combined.plain = sanitizeLyrics(combined.plain);
-
   if (combined.karaoke) {
-    if (!combined.synced) {
-      const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
-      combined.synced = sanitizeLyrics(synced) || null;
-    }
-    if (!combined.plain) {
-      const [plain] = convertLyrics(combined.karaoke, 'karaoke', 'plain');
-      combined.plain = sanitizeLyrics(plain) || null;
-    }
+    const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
+    combined.synced = sanitizeLyrics(synced) || null;
+    const [plain] = convertLyrics(combined.karaoke, 'karaoke', 'plain');
+    combined.plain = sanitizeLyrics(plain) || null;
+  } else if (lrclibData) {
+    combined.synced = lrclibData.syncedLyrics || null;
+    combined.plain = lrclibData.plainLyrics || null;
+    if (combined.synced) combined.synced = sanitizeLyrics(combined.synced);
+    if (combined.plain) combined.plain = sanitizeLyrics(combined.plain);
   }
 
   return combined;
