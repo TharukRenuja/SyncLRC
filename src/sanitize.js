@@ -24,6 +24,17 @@ export const CREDIT_PATTERNS = [
   /^[ \t]*assistant[ \t]+\w+[ \t]+(mix[ \t]+)?engineer[ \t]*[:：-]/i,
   /^[ \t]*assistant[ \t]+\w+[ \t]+by[ \t]*[:：-]/i,
   /^[ \t]*\w+[ \t]+engineering[ \t]+by[ \t]*[:：-]/i,
+  // Extended credit prefixes (e.g., "Background Vocals by:", "Mixing Engineer:")
+  /^[ \t]*background\s+vocals?\s+by\s*[:：-]/i,
+  /^[ \t]*additional\s+vocal\s+by\s*[:：-]/i,
+  /^[ \t]*(mixing|vocal|audio)\s+engineer\s*[：:]/i,
+  /^[ \t]*vocals?\s+produced\s+by\s*[:：-]/i,
+  /^[ \t]*repertoire\s+owner\s*[：:]/i,
+  /^[ \t]*lead\s+vocals?\s*[：:]/i,
+  // Universal catch-all: line starts with words and ends in a production-role word before colon
+  /^[ \t]*\w[\w\s']*(?:engineer|owner|label|studio|director|president|founder|mastered|mixed)[ \t]*[：:]/i,
+  // Universal: full-width colon is never used in lyrics, always metadata
+  /：/,
   // Legal / PRO entities (never appear in actual lyrics)
   /\((?:ASCAP|BMI|IMRO|STIM|GEMA|PRS|SOCAN|SESAC|BUMA|STEMRA|JASRAC|KOMCA|SACEM|APRA)\)/i,
   // Specific production/org credit lines (anchored for safety)

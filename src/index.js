@@ -74,28 +74,6 @@ async function searchLrcLib(query) {
   }
 }
 
-async function resolveTrack(track, artist, env) {
-  const term = `${track} ${artist}`;
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=1`;
-  try {
-    const resp = await fetch(url, { headers: { 'User-Agent': UA } });
-    const data = await resp.json();
-    const item = data.results?.[0];
-
-    if (!item) return { valid: false };
-
-    return {
-      valid: true,
-      canonicalTrack: item.trackName,
-      canonicalArtist: item.artistName,
-      album: item.collectionName || null,
-      duration: item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : null
-    };
-  } catch {
-    return { valid: true, canonicalTrack: track, canonicalArtist: artist, album: null, duration: null };
-  }
-}
-
 async function fetchFromUpstream(track, artist, env) {
   const params = new URLSearchParams({ track, artist, type: 'karaoke' });
   const url = `${env.UPSTREAM_URL}/lyrics?${params}`;
@@ -119,14 +97,11 @@ function jsonResponse(data, status = 200, cacheControl = 'no-cache') {
 }
 
 function errorResponse(msg, status = 400) {
-  const error = status === 429 ? 'RATE_LIMIT_EXCEEDED'
-    : status === 404 ? 'NOT_FOUND'
-    : 'BAD_REQUEST';
+  const error = status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST';
   return jsonResponse({
     success: false,
     error,
-    message: msg,
-    cooldown_seconds: status === 429 ? 3600 : 0
+    message: msg
   }, status, status >= 400 ? 'public, max-age=300' : 'no-cache');
 }
 
@@ -192,6 +167,17 @@ function buildCombined(lrclibData, karaokeLyrics) {
   if (combined.synced) combined.synced = sanitizeLyrics(combined.synced);
   if (combined.plain) combined.plain = sanitizeLyrics(combined.plain);
 
+  if (combined.karaoke) {
+    if (!combined.synced) {
+      const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
+      combined.synced = sanitizeLyrics(synced) || null;
+    }
+    if (!combined.plain) {
+      const [plain] = convertLyrics(combined.karaoke, 'karaoke', 'plain');
+      combined.plain = sanitizeLyrics(plain) || null;
+    }
+  }
+
   return combined;
 }
 
@@ -200,18 +186,17 @@ function buildCombined(lrclibData, karaokeLyrics) {
 async function fetchTrackLyrics(track, artist, album, duration, env) {
   let lrclibData = null;
 
-  // fetch from LRCLib (synced + plain)
   try {
     lrclibData = await fetchFromLrcLib(track, artist, album, duration);
   } catch {}
 
-  // fetch from upstream for karaoke
-  let karaokeLyrics;
-  try { karaokeLyrics = await fetchFromUpstream(track, artist, env); } catch {}
-
   if (lrclibData?.instrumental) {
     return { combined: { karaoke: null, synced: null, plain: null }, instrumental: true, meta: { album: lrclibData.albumName || null, duration: lrclibData.duration || null } };
   }
+
+  const upstreamPromise = fetchFromUpstream(track, artist, env);
+  const timeout = new Promise(r => setTimeout(() => r(null), 3000));
+  const karaokeLyrics = await Promise.race([upstreamPromise, timeout]);
 
   const combined = buildCombined(lrclibData, karaokeLyrics);
 
@@ -223,10 +208,10 @@ async function fetchTrackLyrics(track, artist, album, duration, env) {
     instrumental: false
   };
 
-  return { combined, instrumental: false, meta };
+  return { combined, instrumental: false, meta, pendingUpstream: !karaokeLyrics ? upstreamPromise : null };
 }
 
-async function handleGetLyrics(id, url, env) {
+async function handleGetLyrics(id, url, env, ctx) {
   const track = url.searchParams.get('track')?.trim() || '';
   const artist = url.searchParams.get('artist')?.trim() || '';
   const reqType = url.searchParams.get('type')?.trim() || null;
@@ -245,6 +230,16 @@ async function handleGetLyrics(id, url, env) {
     if (!result) return errorResponse('Lyrics not found', 404);
 
     await storeInCache(id, result.combined, env);
+    if (result.pendingUpstream) {
+      ctx.waitUntil(result.pendingUpstream.then(karaoke => {
+        if (!karaoke) return;
+        return readFromCache(id, env).then(existing => {
+          existing = existing || {};
+          existing.karaoke = sanitizeLyrics(karaoke);
+          return storeInCache(id, existing, env);
+        });
+      }).catch(() => {}));
+    }
     const meta = { album: result.meta.album || row.album, duration: result.meta.duration || row.duration, instrumental: result.instrumental || !!row.instrumental };
     return buildResponse(result.combined, reqType, id, row.name, row.artist, meta);
   }
@@ -295,73 +290,40 @@ async function handleGetLyrics(id, url, env) {
       return buildResponse(empty, reqType, lyricsId, canonTrack, canonArtist, { ...meta, instrumental: true });
     }
 
-    const rawLrc = lrclibData.syncedLyrics || lrclibData.plainLyrics;
-    if (rawLrc) {
-      const lyricsId = await generateHash(canonTrack, canonArtist);
+    const lyricsId = await generateHash(canonTrack, canonArtist);
 
-      let karaokeLyrics;
-      try { karaokeLyrics = await fetchFromUpstream(canonTrack, canonArtist, env); } catch {}
-      const combined = buildCombined(lrclibData, karaokeLyrics);
-      const meta = {
-        album: lrclibData.albumName || null,
-        duration: lrclibData.duration || null,
-        instrumental: false
-      };
+    const upstreamPromise = fetchFromUpstream(canonTrack, canonArtist, env);
+    const timeout = new Promise(r => setTimeout(() => r(null), 3000));
+    const karaokeLyrics = await Promise.race([upstreamPromise, timeout]);
+    const combined = buildCombined(lrclibData, karaokeLyrics);
+    const meta = {
+      album: lrclibData.albumName || null,
+      duration: lrclibData.duration || null,
+      instrumental: false
+    };
 
-      await upsertTrack(lyricsId, canonTrack, canonArtist, meta.album, meta.duration, false, env);
-      await env.KV_CACHE.put(`raw_map:${normalized}`, lyricsId, { expirationTtl: 604800 });
-      if (canonNormalized !== normalized) {
-        await env.KV_CACHE.put(`raw_map:${canonNormalized}`, lyricsId, { expirationTtl: 604800 });
-      }
-      await storeInCache(lyricsId, combined, env);
-      return buildResponse(combined, reqType, lyricsId, canonTrack, canonArtist, meta);
-    }
-  }
-
-  // --- LRCLib miss -> check iTunes ---
-  const resolved = await resolveTrack(track, artist, env);
-  if (!resolved.valid) {
-    await env.KV_CACHE.put(`neg:${normalized}`, '1', { expirationTtl: 300 });
-    return errorResponse('No matching song found for this track/artist.', 404);
-  }
-
-  const { canonicalTrack, canonicalArtist, album: itunesAlbum, duration: itunesDuration } = resolved;
-  const canonNormalized = normalizeKey(canonicalTrack, canonicalArtist);
-  const canonHash = await generateHash(canonicalTrack, canonicalArtist);
-
-  // Check if this track cached already
-  const cached = await readFromCache(canonHash, env);
-  if (cached) {
-    await env.KV_CACHE.put(`raw_map:${normalized}`, canonHash, { expirationTtl: 604800 });
+    await upsertTrack(lyricsId, canonTrack, canonArtist, meta.album, meta.duration, false, env);
+    await env.KV_CACHE.put(`raw_map:${normalized}`, lyricsId, { expirationTtl: 604800 });
     if (canonNormalized !== normalized) {
-      await env.KV_CACHE.put(`raw_map:${canonNormalized}`, canonHash, { expirationTtl: 604800 });
+      await env.KV_CACHE.put(`raw_map:${canonNormalized}`, lyricsId, { expirationTtl: 604800 });
     }
-    const meta = { album: itunesAlbum, duration: itunesDuration, instrumental: false };
-    return buildResponse(cached, reqType, canonHash, canonicalTrack, canonicalArtist, meta);
+    await storeInCache(lyricsId, combined, env);
+    if (!karaokeLyrics) {
+      ctx.waitUntil(upstreamPromise.then(karaoke => {
+        if (!karaoke) return;
+        return readFromCache(lyricsId, env).then(existing => {
+          existing = existing || {};
+          existing.karaoke = sanitizeLyrics(karaoke);
+          return storeInCache(lyricsId, existing, env);
+        });
+      }).catch(() => {}));
+    }
+    return buildResponse(combined, reqType, lyricsId, canonTrack, canonArtist, meta);
   }
 
-  let karaokeLyrics;
-  try { karaokeLyrics = await fetchFromUpstream(canonicalTrack, canonicalArtist, env); } catch {}
-  if (!karaokeLyrics) {
-    await env.KV_CACHE.put(`neg:${normalized}`, '1', { expirationTtl: 300 });
-    return errorResponse('Lyrics not found', 404);
-  }
-
-  const combined = buildCombined(null, karaokeLyrics);
-  if (!combined.karaoke) {
-    await env.KV_CACHE.put(`neg:${normalized}`, '1', { expirationTtl: 300 });
-    return errorResponse('Lyrics not found', 404);
-  }
-
-  const meta = { album: itunesAlbum, duration: itunesDuration, instrumental: false };
-
-  await upsertTrack(canonHash, canonicalTrack, canonicalArtist, itunesAlbum, itunesDuration, false, env);
-  await env.KV_CACHE.put(`raw_map:${normalized}`, canonHash, { expirationTtl: 604800 });
-  if (canonNormalized !== normalized) {
-    await env.KV_CACHE.put(`raw_map:${canonNormalized}`, canonHash, { expirationTtl: 604800 });
-  }
-  await storeInCache(canonHash, combined, env);
-  return buildResponse(combined, reqType, canonHash, canonicalTrack, canonicalArtist, meta);
+  // LRCLib miss — return 404
+  await env.KV_CACHE.put(`neg:${normalized}`, '1', { expirationTtl: 300 });
+  return errorResponse('No matching song found for this track/artist.', 404);
 }
 
 async function handleSearch(request, url, env) {
@@ -442,11 +404,11 @@ export default {
     if (path.startsWith('/lyrics/') && method === 'GET') {
       const id = path.slice('/lyrics/'.length);
       if (!id) return errorResponse('Missing lyrics ID', 400);
-      return handleGetLyrics(id, url, env);
+      return handleGetLyrics(id, url, env, ctx);
     }
 
     if (path === '/lyrics' && method === 'GET') {
-      return handleGetLyrics(null, url, env);
+      return handleGetLyrics(null, url, env, ctx);
     }
 
     if (path === '/search' && method === 'GET') {
