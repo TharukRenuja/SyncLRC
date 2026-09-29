@@ -16,6 +16,8 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
 - **Developer API**: Built-in `/search` and `/lyrics` endpoints for programmatic access.
 - **Web Access**: Try it at **[synclrc.dev](https://synclrc.dev)**
 
+---
+
 ## Developer API
 
 #### 1. Search Tracks & Lyrics
@@ -85,6 +87,8 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
 ```
 </details>
 
+---
+
 ## Contributing
 
 Contributions are welcome!
@@ -94,9 +98,63 @@ Contributions are welcome!
 
 ---
 
+## Community Mirrors
+
+The official SyncLRC API is served at `api.synclrc.dev`. Requests to that host are
+answered by SyncLRC infrastructure.
+
+SyncLRC may also be reached through independent community mirrors. A community mirror
+is a separate deployment operated by its own owner, and it is not part of SyncLRC
+infrastructure. Community mirrors may differ from the official API in caching,
+availability, rate limits, and other usage policies.
+
+If you operate a mirror backed by the SyncLRC upstream, please publish it as a general
+community mirror rather than restricting it to a single application. Mirrors are
+responsible for their own caching decisions and for their own legal and compliance
+obligations. If a mirror is presented to users, it should identify itself as
+independently operated so it is not mistaken for official SyncLRC infrastructure.
+
+---
+
 ## Legal Disclaimer
 
-SyncLRC acts as an easy gateway for developers, as there is no open and free word-by-word (karaoke-style) synced lyrics provider available. SyncLRC does not permanently store or host copyrighted lyrics. All lyric content is fetched on-demand from third-party sources and returned directly to the requesting client. A short-lived transient cache exists solely to reduce redundant outbound API calls and is automatically evicted.
+SyncLRC makes word-by-word synced lyrics easy to consume. Most alternatives make you
+sign up for an API key, ship a per-client agent that polls for updates, or build your own
+translation and lyrics pipeline. SyncLRC is a plain HTTP endpoint that returns the format
+you ask for.
+
+All lyric content is fetched on-demand from third-party sources. The project does not
+claim ownership of third-party lyrics, which remain the property of their respective
+owners.
+
+Lyrics are held transiently. A daily cron deletes anything not requested within the
+retention window, so the Worker does not accumulate a lyrics corpus. Default retention is
+one day and is configurable with `RETENTION_DAYS`. When you self-host, that storage is
+your own D1 database and your retention decision: set `RETENTION_DAYS` to `0` to disable
+caching entirely, or lower it, and every request is served by a fresh upstream lookup.
+
+The SyncLRC source code is licensed under AGPL-3.0. That license applies to the software
+itself and does not grant rights to third-party copyrighted content retrieved through the
+software.
+
+---
+
+## Self-Hosting
+
+The Worker needs a single binding: **D1**. There is no KV or R2 requirement, and the lyrics text is stored in D1 alongside the track metadata and the name index.
+
+1. Copy `wrangler.example.jsonc` to `wrangler.jsonc` and set your `database_id`, `UPSTREAM_URL`, and `UPSTREAM_SECRET`.
+2. Create the schema:
+
+   ```bash
+   npx wrangler d1 execute <database_name> --remote --file=src/schema.sql
+   ```
+
+3. Deploy:
+
+   ```bash
+   npx wrangler deploy
+   ```
 
 ---
 

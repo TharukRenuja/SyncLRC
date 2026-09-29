@@ -8,14 +8,15 @@
   },
   "vars": {
     "UPSTREAM_URL": "https://your-upstream.api",
-    "UPSTREAM_SECRET": "your-upstream-secret"
+    "UPSTREAM_SECRET": "your-upstream-secret",
+    // Days a stored lyric is retained before the daily purge deletes it. Lyrics are
+    // held transiently and refetched on demand, so this only trades storage against
+    // repeat upstream lookups. Defaults to 1 when unset.
+    "RETENTION_DAYS": "1"
   },
-  "kv_namespaces": [
-    {
-      "binding": "KV_CACHE",
-      "id": "your-kv-id"
-    }
-  ],
+  "triggers": {
+    "crons": ["0 4 * * *"]
+  },
   "d1_databases": [
     {
       "binding": "D1_DB",
