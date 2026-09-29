@@ -127,11 +127,12 @@ All lyric content is fetched on-demand from third-party sources. The project doe
 claim ownership of third-party lyrics, which remain the property of their respective
 owners.
 
-Lyrics are held transiently. A daily cron deletes anything not requested within the
-retention window, so the Worker does not accumulate a lyrics corpus. Default retention is
-one day and is configurable with `RETENTION_DAYS`. When you self-host, that storage is
-your own D1 database and your retention decision: set `RETENTION_DAYS` to `0` to disable
-caching entirely, or lower it, and every request is served by a fresh upstream lookup.
+Lyrics are cached for one day, not archived. A daily cron deletes anything not requested
+in the last 24 hours, so the Worker does not accumulate a lyrics corpus.
+
+The cache lives in D1 rather than KV because the project outgrew KV's free-tier limits:
+KV allows 100,000 reads and 1,000 writes per day, which a read-heavy API exceeds. When
+you self-host, that database is yours to manage.
 
 The SyncLRC source code is licensed under AGPL-3.0. That license applies to the software
 itself and does not grant rights to third-party copyrighted content retrieved through the

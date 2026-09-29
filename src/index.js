@@ -5,7 +5,12 @@ const NEG_TTL = 300;
 const NEG_TTL_UPSTREAM = 3600;
 const UPSTREAM_COOLDOWN_TTL = 3600;
 
+// Constant, not config: the README's "we don't accumulate a corpus" claim has to
+// describe the software. Fork under AGPL to change it.
+const RETENTION_DAYS = 1;
+
 import { sanitizeLyrics } from './sanitize.js';
+import { isRelevant } from './match.js';
 
 function normalizeKey(track, artist) {
   const t = track.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^a-z0-9\s]/g, '');
@@ -55,17 +60,22 @@ function convertLyrics(lyrics, currentType, targetType) {
   return [lyrics, currentType];
 }
 
-async function fetchFromLrcLib(track, artist, albumName, duration) {
-  let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(track)}&artist_name=${encodeURIComponent(artist)}`;
-  if (albumName) url += `&album_name=${encodeURIComponent(albumName)}`;
-  if (duration) url += `&duration=${encodeURIComponent(duration)}`;
-  try {
-    const resp = await fetch(url, { headers: { 'User-Agent': UA } });
-    if (resp.status !== 200) return null;
-    return await resp.json();
-  } catch {
-    return null;
+// Tries each requested artist in turn; a collab may be indexed under any one of them.
+async function fetchFromLrcLib(track, artists, albumName, duration) {
+  for (const artist of artists) {
+    let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(track)}&artist_name=${encodeURIComponent(artist)}`;
+    if (albumName) url += `&album_name=${encodeURIComponent(albumName)}`;
+    if (duration) url += `&duration=${encodeURIComponent(duration)}`;
+    try {
+      const resp = await fetch(url, { headers: { 'User-Agent': UA } });
+      if (resp.status !== 200) continue;
+      const data = await resp.json();
+      if (isRelevant(track, artists, data.trackName, data.artistName)) return data;
+    } catch {
+      // try the next artist
+    }
   }
+  return null;
 }
 
 async function searchLrcLib(query) {
@@ -79,16 +89,12 @@ async function searchLrcLib(query) {
   }
 }
 
-// Upstream contract:
-//   200 -> {"lyrics": "..."} karaoke found
-//   404 -> every source was asked, no word-level karaoke exists (real miss, cacheable)
-//   400 -> invalid provider/format from us
-//   403 -> bad secret
-//   504 -> chain budget exhausted (retry, never cache)
-// Deployments running the previous contract answer 200 for everything and use a
-// `karaoke` field, so both shapes are read.
-async function fetchFromUpstream(track, artist, env) {
-  const params = new URLSearchParams({ track, artist });
+// 200 karaoke found, 404 confirmed miss (cacheable), 400/403 our config error,
+// 504 ran out of time (retry, never cache). Older deployments answer 200 for
+// everything and use a `karaoke` field, so both shapes are read.
+async function fetchFromUpstream(track, artists, env) {
+  const params = new URLSearchParams({ track });
+  for (const artist of artists) params.append('artist', artist);
   const url = `${env.UPSTREAM_URL}/lyrics?${params}`;
 
   let resp;
@@ -170,9 +176,7 @@ function buildResponse(combined, reqType, id, track, artist, meta) {
 }
 
 // ---- D1 storage ----
-// Everything lives in one D1 table: metadata, the lyrics text, and the name->id index.
-// A KV read per request was what exhausted the free-tier read cap, and the lyrics body
-// had a 24h TTL that forced a rewrite of every active track once a day.
+// Metadata, lyrics text, and the name->id index all live in one table.
 
 async function lookupById(id, env) {
   return await env.D1_DB.prepare(
@@ -272,16 +276,9 @@ async function storeCombined(track, artist, combined, meta, env) {
   return { id, merged };
 }
 
-// Lyrics are held transiently: a row is dropped once it has gone untouched for the
-// retention window, so the Worker does not accumulate a corpus. Everything it serves
-// is refetched from LRCLib and the upstream on the next request.
-//
-// RETENTION_DAYS of 0 disables retention entirely, which is the same as not caching at
-// all: every stored row is removed on the next run and each request refetches upstream.
+// Drops rows untouched for the retention window; they are refetched on next request.
 async function purgeExpired(env) {
-  const configured = Number(env.RETENTION_DAYS);
-  const days = Number.isFinite(configured) && configured >= 0 ? configured : 1;
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
   const tracks = await env.D1_DB.prepare(
     'DELETE FROM tracks WHERE fetched_at IS NULL OR fetched_at < ?'
@@ -320,7 +317,10 @@ function buildCombined(lrclibData, karaokeLyrics) {
 
 async function handleGetLyrics(id, url, env, ctx) {
   const track = url.searchParams.get('track')?.trim() || '';
-  const artist = url.searchParams.get('artist')?.trim() || '';
+  // Repeatable: artist=A&artist=B. The first is the primary used for identity and
+  // storage; all of them are forwarded for matching.
+  const artists = url.searchParams.getAll('artist').map(a => a.trim()).filter(Boolean);
+  const artist = artists[0] || '';
   const reqType = url.searchParams.get('type')?.trim() || null;
 
   // By id
@@ -334,7 +334,7 @@ async function handleGetLyrics(id, url, env, ctx) {
       return buildResponse(combined, reqType, id, row.name, row.artist, meta);
     }
 
-    const result = await buildFromSources(row.name, row.artist, row.album, row.duration, env);
+    const result = await buildFromSources(row.name, [row.artist], row.album, row.duration, env);
     if (!result) return errorResponse('Lyrics not found', 404);
     if (result.pendingUpstream) ctx.waitUntil(result.pendingUpstream);
 
@@ -370,7 +370,7 @@ async function handleGetLyrics(id, url, env, ctx) {
     return errorResponse('No matching song found for this track/artist.', 404);
   }
 
-  const result = await buildFromSources(track, artist, album, duration, env);
+  const result = await buildFromSources(track, artists, album, duration, env);
   if (result?.pendingUpstream) ctx.waitUntil(result.pendingUpstream);
 
   if (!result) {
@@ -386,10 +386,10 @@ async function handleGetLyrics(id, url, env, ctx) {
   return buildResponse(result.combined, reqType, result.id, result.track, result.artist, meta);
 }
 
-// Fetch from LRCLib and the upstream, persist, and report any still-pending karaoke upgrade.
-async function buildFromSources(track, artist, album, duration, env) {
+async function buildFromSources(track, artists, album, duration, env) {
+  const artist = artists[0];
   const norm = normalizeKey(track, artist);
-  const lrclibData = await fetchFromLrcLib(track, artist, album, duration);
+  const lrclibData = await fetchFromLrcLib(track, artists, album, duration);
 
   if (lrclibData?.instrumental) {
     await storeCombined(track, artist, { karaoke: null, synced: null, plain: null },
@@ -404,21 +404,28 @@ async function buildFromSources(track, artist, album, duration, env) {
     };
   }
 
-  // Don't block the response on the upstream. Race it against a short budget; if it
-  // hasn't answered in time, recheckTrack finishes the job in the background under the
-  // cooldown, so the request returns on LRCLib data instead of waiting on a scrape.
+  // With LRCLib lyrics in hand, answer on those rather than waiting on a scrape and
+  // upgrade in the background. With nothing from LRCLib there is nothing to answer
+  // with, so wait for the upstream properly rather than reporting a false miss.
+  const haveLrc = !!(lrclibData && (lrclibData.syncedLyrics || lrclibData.plainLyrics));
+
   let timedOut = false;
-  const upstreamPromise = fetchFromUpstream(track, artist, env);
-  const budget = new Promise(resolve => {
-    setTimeout(() => { timedOut = true; resolve({ status: 'retry' }); }, UPSTREAM_INLINE_BUDGET_MS);
-  });
-  const upstream = await Promise.race([upstreamPromise, budget]);
+  const upstreamPromise = fetchFromUpstream(track, artists, env);
+  let upstream;
+  if (haveLrc) {
+    const budget = new Promise(resolve => {
+      setTimeout(() => { timedOut = true; resolve({ status: 'retry' }); }, UPSTREAM_INLINE_BUDGET_MS);
+    });
+    upstream = await Promise.race([upstreamPromise, budget]);
+  } else {
+    upstream = await upstreamPromise;
+  }
+
   const karaokeLyrics = upstream.status === 'ok' ? upstream.lyrics : null;
   const combined = buildCombined(lrclibData, karaokeLyrics);
 
   if (!combined.karaoke && !combined.synced && !combined.plain) {
-    // A 404 is a confirmed miss across every upstream source; a 504 (or our own inline
-    // budget running out) is not a miss and must never be cached.
+    // Only a 404 is a real miss; a 504 is not and must not be cached.
     if (upstream.status === 'miss') await setFlag(norm, 'neg', NEG_TTL_UPSTREAM, env);
     return null;
   }
@@ -441,8 +448,7 @@ async function buildFromSources(track, artist, album, duration, env) {
 
   let pendingUpstream = null;
   if (!karaokeLyrics) {
-    // Upgrade karaoke in the background. If the inline budget ran out, settle the
-    // in-flight request rather than issuing a second scrape for the same track.
+    // Settle the in-flight request rather than scraping the same track twice.
     const settle = timedOut ? upstreamPromise : Promise.resolve(upstream);
     pendingUpstream = (async () => {
       let result;
@@ -452,8 +458,7 @@ async function buildFromSources(track, artist, album, duration, env) {
         return;
       }
       if (result?.status !== 'ok') {
-        // Nothing to apply. A confirmed miss is left to the normal request path, and a
-        // 504/timeout is never cached so the next request tries again.
+        // Nothing to apply; a 504 is never cached so the next request retries.
         return;
       }
       const karaoke = sanitizeLyrics(result.lyrics);
@@ -480,7 +485,8 @@ async function buildFromSources(track, artist, album, duration, env) {
   };
 }
 
-async function recheckTrack(track, artist, env) {
+async function recheckTrack(track, artists, env) {
+  const artist = artists[0];
   const norm = normalizeKey(track, artist);
 
   let row = await lookupByNorm(norm, env);
@@ -491,8 +497,10 @@ async function recheckTrack(track, artist, env) {
   await setFlag(norm, 'cooldown', UPSTREAM_COOLDOWN_TTL, env);
 
   const recheckTrackName = row?.name || track;
-  const recheckArtistName = row?.artist || artist;
-  const result = await fetchFromUpstream(recheckTrackName, recheckArtistName, env);
+  // A stored row only knows its primary artist; the caller's full list is preferred
+  // so a collab still resolves when the row predates multi-artist support.
+  const recheckArtists = row ? [row.artist] : artists;
+  const result = await fetchFromUpstream(recheckTrackName, recheckArtists, env);
 
   if (result.status !== 'ok') {
     if (result.status === 'miss' && !row?.karaoke_ok && !row?.synced_ok && !row?.plain_ok) {
@@ -512,7 +520,7 @@ async function recheckTrack(track, artist, env) {
     plain: sanitizeLyrics(plain) || null
   };
 
-  await storeCombined(recheckTrackName, recheckArtistName, merged,
+  await storeCombined(recheckTrackName, recheckArtists[0], merged,
     { instrumental: false }, env);
   await clearFlag(norm, 'neg', env);
 }
@@ -535,8 +543,7 @@ async function handleSearch(request, url, env) {
     if (!trackName || !artistName) continue;
     if (item.instrumental) continue;
 
-    // Search is a read path: it reports what LRCLib has and does not store, so repeat
-    // queries can be served from the edge cache instead of writing on every request.
+    // Read-only: storing here would make a read endpoint write on every request.
     finalResults.push({
       id: await generateHash(trackName, artistName),
       track: trackName,
@@ -584,7 +591,7 @@ export default {
         github: 'https://github.com/TharukRenuja/SyncLRC',
         endpoints: {
           search: { path: '/search', method: 'GET', params: { q: 'string (required)', limit: 'int', offset: 'int' } },
-          lyrics: { path: '/lyrics', method: 'GET', params: { track: 'string (required)', artist: 'string (required)', type: 'karaoke|synced|plain', album: 'string', duration: 'int' } },
+          lyrics: { path: '/lyrics', method: 'GET', params: { track: 'string (required)', artist: 'string (required, repeatable for collabs)', type: 'karaoke|synced|plain', album: 'string', duration: 'int' } },
           lyricsById: { path: '/lyrics/{id}', method: 'GET', path_param: { id: '32-char hex hash' }, params: { type: 'karaoke|synced|plain' } }
         }
       }, 200, 'public, max-age=86400');
