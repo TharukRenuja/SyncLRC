@@ -4,9 +4,6 @@ const UPSTREAM_INLINE_BUDGET_MS = 3000;
 const NEG_TTL = 300;
 const NEG_TTL_UPSTREAM = 3600;
 const UPSTREAM_COOLDOWN_TTL = 3600;
-
-// Constant, not config: the README's "we don't accumulate a corpus" claim has to
-// describe the software. Fork under AGPL to change it.
 const RETENTION_DAYS = 1;
 
 import { sanitizeLyrics } from './sanitize.js';

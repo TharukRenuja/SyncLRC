@@ -61,12 +61,16 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
 
 `GET /lyrics?track={track}&artist={artist}&type={type}&album={album}&duration={duration}`
 
+For collaborations, repeat `artist` once per artist. Order does not matter; any one of
+them is enough to match.
+
+`GET /lyrics?track={track}&artist={artist1}&artist={artist2}`
+
 <details>
 <summary><b>Parameters & Response</b></summary>
 
-- `type`: (Optional) `karaoke`, `synced`, or `plain`.
 - `track`: (Required) Song name.
-- `artist`: (Required) Artist name.
+- `artist`: (Required) Artist name. Repeat for collaborations.
 - `type`: (Optional) `karaoke`, `synced`, or `plain`.
 - `album`: (Optional) Album name for more accurate matching.
 - `duration`: (Optional) Track duration in seconds for more accurate matching.
@@ -156,6 +160,13 @@ The Worker needs a single binding: **D1**. There is no KV or R2 requirement, and
    ```bash
    npx wrangler deploy
    ```
+
+Already running an older version (<`v1.1.2`) ? `src/schema.sql` only creates a fresh database, so
+bring an existing one forward instead:
+
+```bash
+npx wrangler d1 execute <database_name> --remote --file=migrations/migration.sql
+```
 
 ---
 
