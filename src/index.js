@@ -3,7 +3,9 @@ const UPSTREAM_TIMEOUT_MS = 20000;
 const UPSTREAM_INLINE_BUDGET_MS = 3000;
 const NEG_TTL = 300;
 const NEG_TTL_UPSTREAM = 3600;
-const UPSTREAM_COOLDOWN_TTL = 3600;
+// Dedup window for concurrent upstream calls on one track: long enough to outlast a slow
+// upstream, short enough that a cut-off waitUntil release cannot starve a track of karaoke.
+const UPSTREAM_COOLDOWN_TTL = 60;
 const RETENTION_DAYS = 1;
 
 import { sanitizeLyrics } from './sanitize.js';
@@ -122,13 +124,14 @@ async function fetchFromUpstream(track, artists, env) {
   return { status: 'ok', lyrics };
 }
 
-function jsonResponse(data, status = 200, cacheControl = 'no-cache') {
+function jsonResponse(data, status = 200, cacheControl = 'no-cache', extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': cacheControl,
-      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Origin': '*',
+      ...extraHeaders
     }
   });
 }
@@ -146,8 +149,12 @@ function pickType(combined) {
   return combined.karaoke ? 'karaoke' : combined.synced ? 'synced' : 'plain';
 }
 
-function buildResponse(combined, reqType, id, track, artist, meta) {
+function buildResponse(combined, reqType, id, track, artist, meta, { pending = false } = {}) {
   const base = { album: meta?.album || null, duration: meta?.duration || null, instrumental: meta?.instrumental || false };
+  // A pending response must not be cached for a day, or the edge keeps serving the
+  // "karaoke still coming" copy long after the upgrade lands and the header never clears.
+  const cacheControl = pending ? 'public, max-age=60' : 'public, max-age=86400';
+  const headers = pending ? { 'Synclrc-Pending': 'karaoke' } : {};
 
   if (combined.karaoke) {
     const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
@@ -160,7 +167,7 @@ function buildResponse(combined, reqType, id, track, artist, meta) {
     const lyrics = combined[reqType] || combined.synced || combined.plain;
     const type = pickType(combined);
     const [converted, convertedType] = convertLyrics(lyrics, type, reqType);
-    return jsonResponse({ lyrics: converted, type: convertedType, id, track, artist, ...base }, 200, 'public, max-age=86400');
+    return jsonResponse({ lyrics: converted, type: convertedType, id, track, artist, ...base }, 200, cacheControl, headers);
   }
 
   return jsonResponse({
@@ -169,7 +176,7 @@ function buildResponse(combined, reqType, id, track, artist, meta) {
     karaoke: combined.karaoke || null,
     synced: combined.synced || null,
     plain: combined.plain || null
-  }, 200, 'public, max-age=86400');
+  }, 200, cacheControl, headers);
 }
 
 // ---- D1 storage ----
@@ -215,6 +222,26 @@ async function setFlag(norm, kind, ttl, env) {
   await env.D1_DB.prepare(
     'INSERT OR REPLACE INTO cache_flags (norm, kind, expires_at) VALUES (?, ?, ?)'
   ).bind(norm, kind, Date.now() + ttl * 1000).run();
+}
+
+// Atomic claim on the next upstream fetch, so a burst cannot fan out into one call per request.
+async function claimUpstream(norm, env) {
+  const fresh = Date.now() + UPSTREAM_COOLDOWN_TTL * 1000;
+  const res = await env.D1_DB.prepare(
+    'INSERT OR IGNORE INTO cache_flags (norm, kind, expires_at) VALUES (?, ?, ?)'
+  ).bind(norm, 'cooldown', fresh).run();
+  if ((res?.meta?.changes ?? 0) > 0) return true;
+
+  const row = await env.D1_DB.prepare(
+    'SELECT expires_at FROM cache_flags WHERE norm = ? AND kind = ?'
+  ).bind(norm, 'cooldown').first();
+  if (!row || row.expires_at <= Date.now()) {
+    await env.D1_DB.prepare(
+      'UPDATE cache_flags SET expires_at = ? WHERE norm = ? AND kind = ?'
+    ).bind(fresh, norm, 'cooldown').run();
+    return true;
+  }
+  return false;
 }
 
 async function clearFlag(norm, kind, env) {
@@ -328,7 +355,9 @@ async function handleGetLyrics(id, url, env, ctx) {
     const combined = combinedFromRow(row);
     if (combined.karaoke || combined.synced || combined.plain) {
       const meta = { album: row.album, duration: row.duration, instrumental: !!row.instrumental };
-      return buildResponse(combined, reqType, id, row.name, row.artist, meta);
+      const pending = !combined.karaoke;
+      if (pending) ctx.waitUntil(recheckTrack(row.name, [row.artist], env));
+      return buildResponse(combined, reqType, id, row.name, row.artist, meta, { pending });
     }
 
     const result = await buildFromSources(row.name, [row.artist], row.album, row.duration, env);
@@ -359,7 +388,9 @@ async function handleGetLyrics(id, url, env, ctx) {
     const combined = combinedFromRow(row);
     if (combined.karaoke || combined.synced || combined.plain) {
       const meta = { album: row.album, duration: row.duration, instrumental: !!row.instrumental };
-      return buildResponse(combined, reqType, row.id, row.name, row.artist, meta);
+      const pending = !combined.karaoke;
+      if (pending) ctx.waitUntil(recheckTrack(row.name, [row.artist, ...artists], env));
+      return buildResponse(combined, reqType, row.id, row.name, row.artist, meta, { pending });
     }
   }
 
@@ -380,7 +411,8 @@ async function handleGetLyrics(id, url, env, ctx) {
     duration: result.meta.duration,
     instrumental: result.instrumental
   };
-  return buildResponse(result.combined, reqType, result.id, result.track, result.artist, meta);
+  return buildResponse(result.combined, reqType, result.id, result.track, result.artist, meta,
+    { pending: !!result.pendingUpstream });
 }
 
 async function buildFromSources(track, artists, album, duration, env) {
@@ -401,21 +433,28 @@ async function buildFromSources(track, artists, album, duration, env) {
     };
   }
 
-  // With LRCLib lyrics in hand, answer on those rather than waiting on a scrape and
-  // upgrade in the background. With nothing from LRCLib there is nothing to answer
-  // with, so wait for the upstream properly rather than reporting a false miss.
+  // Answer on LRCLib lyrics rather than waiting on the upstream, and upgrade in the background.
   const haveLrc = !!(lrclibData && (lrclibData.syncedLyrics || lrclibData.plainLyrics));
 
+  // Only the caller that wins the claim hits the upstream; the rest answer from LRCLib as pending.
   let timedOut = false;
-  const upstreamPromise = fetchFromUpstream(track, artists, env);
-  let upstream;
-  if (haveLrc) {
-    const budget = new Promise(resolve => {
-      setTimeout(() => { timedOut = true; resolve({ status: 'retry' }); }, UPSTREAM_INLINE_BUDGET_MS);
-    });
-    upstream = await Promise.race([upstreamPromise, budget]);
-  } else {
-    upstream = await upstreamPromise;
+  let upstreamPromise = null;
+  if (await claimUpstream(norm, env)) {
+    upstreamPromise = fetchFromUpstream(track, artists, env);
+  }
+
+  let upstream = { status: 'skipped' };
+  if (upstreamPromise) {
+    if (haveLrc) {
+      const budget = new Promise(resolve => {
+        setTimeout(() => { timedOut = true; resolve({ status: 'retry' }); }, UPSTREAM_INLINE_BUDGET_MS);
+      });
+      upstream = await Promise.race([upstreamPromise, budget]);
+    } else if (!haveLrc) {
+      // Nothing from LRCLib means nothing to answer with, so wait rather than report a
+      // false miss.
+      upstream = await upstreamPromise;
+    }
   }
 
   const karaokeLyrics = upstream.status === 'ok' ? upstream.lyrics : null;
@@ -424,6 +463,7 @@ async function buildFromSources(track, artists, album, duration, env) {
   if (!combined.karaoke && !combined.synced && !combined.plain) {
     // Only a 404 is a real miss; a 504 is not and must not be cached.
     if (upstream.status === 'miss') await setFlag(norm, 'neg', NEG_TTL_UPSTREAM, env);
+    if (upstream.status !== 'ok') await clearFlag(norm, 'cooldown', env);
     return null;
   }
 
@@ -445,29 +485,29 @@ async function buildFromSources(track, artists, album, duration, env) {
 
   let pendingUpstream = null;
   if (!karaokeLyrics) {
-    // Settle the in-flight request rather than scraping the same track twice.
+    // Settle the in-flight request instead of fetching the same track twice.
     const settle = timedOut ? upstreamPromise : Promise.resolve(upstream);
     pendingUpstream = (async () => {
-      let result;
       try {
-        result = await settle;
+        const result = await settle;
+        if (result?.status === 'ok') {
+          const karaoke = sanitizeLyrics(result.lyrics);
+          if (karaoke) {
+            const [synced] = convertLyrics(karaoke, 'karaoke', 'synced');
+            const [plain] = convertLyrics(karaoke, 'karaoke', 'plain');
+            await storeCombined(canonTrack, canonArtist, {
+              karaoke,
+              synced: sanitizeLyrics(synced) || null,
+              plain: sanitizeLyrics(plain) || null
+            }, { instrumental: false }, env);
+            await clearFlag(norm, 'neg', env);
+          }
+        }
       } catch {
-        return;
+      } finally {
+        // Release the claim so a failed fetch cannot lock the track out of karaoke.
+        await clearFlag(norm, 'cooldown', env).catch(() => {});
       }
-      if (result?.status !== 'ok') {
-        // Nothing to apply; a 504 is never cached so the next request retries.
-        return;
-      }
-      const karaoke = sanitizeLyrics(result.lyrics);
-      if (!karaoke) return;
-      const [synced] = convertLyrics(karaoke, 'karaoke', 'synced');
-      const [plain] = convertLyrics(karaoke, 'karaoke', 'plain');
-      await storeCombined(canonTrack, canonArtist, {
-        karaoke,
-        synced: sanitizeLyrics(synced) || null,
-        plain: sanitizeLyrics(plain) || null
-      }, { instrumental: false }, env);
-      await clearFlag(norm, 'neg', env);
     })();
   }
 
@@ -490,13 +530,23 @@ async function recheckTrack(track, artists, env) {
   if (!row) row = await lookupByName(track, artist, env);
   if (isComplete(row)) return;
 
-  if (await getFlag(norm, 'cooldown', env)) return;
-  await setFlag(norm, 'cooldown', UPSTREAM_COOLDOWN_TTL, env);
+  if (!(await claimUpstream(norm, env))) return;
 
+  try {
+    await runRecheck(norm, row, track, artists, env);
+  } catch {
+  } finally {
+    // Release the claim so a failed fetch cannot lock the track out of karaoke.
+    await clearFlag(norm, 'cooldown', env).catch(() => {});
+  }
+}
+
+async function runRecheck(norm, row, track, artists, env) {
   const recheckTrackName = row?.name || track;
   // A stored row only knows its primary artist; the caller's full list is preferred
-  // so a collab still resolves when the row predates multi-artist support.
-  const recheckArtists = row ? [row.artist] : artists;
+  // so a collab still resolves when the row predates multi-artist support. The stored
+  // spelling stays a candidate too, since the upstream matches on its own names.
+  const recheckArtists = [...new Set([...artists, ...(row ? [row.artist] : [])])];
   const result = await fetchFromUpstream(recheckTrackName, recheckArtists, env);
 
   if (result.status !== 'ok') {
@@ -522,6 +572,19 @@ async function recheckTrack(track, artists, env) {
   await clearFlag(norm, 'neg', env);
 }
 
+// LRCLib search returns some rows as "Artist - Title" in trackName, which hashes
+// differently from the "Title" / "Artist" pair that /api/get stores under. Strip the
+// prefix so a stored track is still found.
+async function searchAltId(trackName, artistName) {
+  if (!artistName || !trackName) return null;
+  const prefix = `${artistName} - `;
+  if (trackName.toLowerCase().startsWith(prefix.toLowerCase())) {
+    const stripped = trackName.slice(prefix.length).trim();
+    if (stripped) return generateHash(stripped, artistName);
+  }
+  return null;
+}
+
 async function handleSearch(request, url, env) {
   const query = url.searchParams.get('q')?.trim() || '';
   const limit = parseInt(url.searchParams.get('limit') || '10');
@@ -530,31 +593,59 @@ async function handleSearch(request, url, env) {
   if (!query) return errorResponse("Missing 'q' parameter");
 
   const results = await searchLrcLib(query);
-  const finalResults = [];
+  const picks = [];
 
   for (const item of results.slice(offset)) {
-    if (finalResults.length >= limit) break;
+    if (picks.length >= limit) break;
 
     const trackName = item.trackName;
     const artistName = item.artistName;
     if (!trackName || !artistName) continue;
     if (item.instrumental) continue;
 
-    // Read-only: storing here would make a read endpoint write on every request.
-    finalResults.push({
+    picks.push({
       id: await generateHash(trackName, artistName),
+      altId: await searchAltId(trackName, artistName),
       track: trackName,
       artist: artistName,
       album: item.albumName || null,
       duration: item.duration || null,
-      instrumental: false,
-      lyrics: {
-        plain: item.plainLyrics || null,
-        synced: item.syncedLyrics || null,
-        karaoke: null
-      }
+      plain: item.plainLyrics || null,
+      synced: item.syncedLyrics || null
     });
   }
+
+  // Read-only: storing here would make a read endpoint write on every request. One
+  // batched query tells us which results already have karaoke, so a caller can tell
+  // up front instead of fetching each track to find out.
+  const karaokeById = new Map();
+  if (picks.length) {
+    const ids = [...new Set(picks.flatMap(p => (p.altId && p.altId !== p.id ? [p.id, p.altId] : [p.id])))];
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const placeholders = chunk.map(() => '?').join(',');
+      const { results: rows } = await env.D1_DB.prepare(
+        `SELECT id, karaoke FROM tracks WHERE id IN (${placeholders}) AND karaoke IS NOT NULL`
+      ).bind(...chunk).all();
+      for (const row of rows || []) {
+        if (row.karaoke) karaokeById.set(row.id, row.karaoke);
+      }
+    }
+  }
+
+  const finalResults = picks.map(pick => ({
+    id: pick.id,
+    track: pick.track,
+    artist: pick.artist,
+    album: pick.album,
+    duration: pick.duration,
+    instrumental: false,
+    lyrics: {
+      plain: pick.plain,
+      synced: pick.synced,
+      karaoke: karaokeById.get(pick.id) || karaokeById.get(pick.altId) || null
+    }
+  }));
 
   return jsonResponse({
     results: finalResults,

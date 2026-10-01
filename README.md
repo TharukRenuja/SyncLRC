@@ -172,4 +172,4 @@ npx wrangler d1 execute <database_name> --remote --file=migrations/migration.sql
 
 ## Credits
 
-This project uses the [iTunes Search API](https://performance-partners.apple.com/search-api) to fetch track metadata, [LRCLIB](https://lrclib.net) as the primary lyrics source, and [LDDC](https://github.com/chenmozhijin/LDDC) + [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from `Netease`, `QQ Music`, `Kugou`, and `Musixmatch`.
+This project uses the [iTunes Search API](https://performance-partners.apple.com/search-api) to fetch track metadata, [LRCLIB](https://lrclib.net) as the primary lyrics source, and [LDDC](https://github.com/chenmozhijin/LDDC) + [syncedlyrics](https://github.com/moehmeni/syncedlyrics) for fetching lyrics from `Netease`, `QQ Music`, `Kugou`, `Apple Music`, `Spotify` and `Musixmatch`.

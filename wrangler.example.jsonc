@@ -3,6 +3,9 @@
   "name": "synclrc",
   "main": "src/index.js",
   "compatibility_date": "2025-02-01",
+  "cache": {
+    "enabled": true
+  },
   "observability": {
     "enabled": true
   },

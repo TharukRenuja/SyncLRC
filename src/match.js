@@ -1,8 +1,6 @@
-// Relevance scoring, ported from the upstream scraper's providers.py.
-//
-// Used to reject a provider result for a different track before it is stored or
-// served. The title is the strict gate (all query tokens must be present); the artist
-// is deliberately loose, because a collab legitimately credits more or fewer artists
+// Relevance scoring, used to reject an upstream result for a different track before it is
+// stored or served. The title is the strict gate (all query tokens must be present); the
+// artist is deliberately loose, because a collab legitimately credits more or fewer artists
 // than the caller named.
 
 function normText(text) {
