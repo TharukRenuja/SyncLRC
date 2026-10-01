@@ -17,10 +17,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearSearchBtn = document.getElementById('clear-search');
 
     let searchTimeout;
+    let searchRequestId = 0;
+    let lyricsRequestId = 0;
     let currentRawLyrics = null;
     let currentLyricsType = null;
     let currentActiveType = 'karaoke';
     let searchResultIndex = -1;
+
+    const clearCurrentLyrics = () => {
+        currentRawLyrics = null;
+        currentLyricsType = null;
+        currentActiveType = 'karaoke';
+        lyricsContent.innerHTML = '';
+        document.querySelector('.controls-actions').style.display = 'none';
+    };
 
     const updateIcons = () => {
         if (window.lucide) {
@@ -49,12 +59,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     searchInput.addEventListener('input', (e) => {
         const query = e.target.value.trim();
+        const requestId = ++searchRequestId;
+        lyricsRequestId++;
+        loader.style.display = 'none';
         clearTimeout(searchTimeout);
 
         if (!query) {
             clearSearchBtn.style.display = 'none';
             resultsDropdown.classList.remove('open');
+            resultsDropdown.innerHTML = '';
             lyricsView.style.display = 'none';
+            loader.style.display = 'none';
+            clearCurrentLyrics();
             welcomeState.style.display = 'flex';
             return;
         }
@@ -67,8 +83,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=6`);
                 if (!response.ok) throw new Error('Search service error');
                 const data = await response.json();
+                if (requestId !== searchRequestId) return;
                 renderResults(data.results);
             } catch (err) {
+                if (requestId !== searchRequestId) return;
                 console.error('Search error:', err);
                 resultsDropdown.innerHTML = `
                     <div class="result-item" style="cursor:default;flex-direction:column;gap:0.25rem;padding:1.5rem;text-align:center;pointer-events:none;">
@@ -118,10 +136,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchLyrics = async (track, artist, artwork) => {
+        searchRequestId++;
+        clearTimeout(searchTimeout);
+        const requestId = ++lyricsRequestId;
         resultsDropdown.classList.remove('open');
         lyricsView.style.display = 'none';
         welcomeState.style.display = 'none';
         loader.style.display = 'block';
+        clearCurrentLyrics();
         searchInput.value = `${track} — ${artist}`;
         clearSearchBtn.style.display = 'flex';
 
@@ -139,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
+            if (requestId !== lyricsRequestId) return;
 
             if (data.error) throw { type: 'not_found', message: data.error };
 
@@ -158,7 +181,9 @@ document.addEventListener('DOMContentLoaded', () => {
             loader.style.display = 'none';
             lyricsView.style.display = 'block';
         } catch (err) {
+            if (requestId !== lyricsRequestId) return;
             console.error('Lyrics fetch error:', err);
+            clearCurrentLyrics();
             loader.style.display = 'none';
             displayTrackInfo(track, artist, artwork);
             
@@ -350,6 +375,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     clearSearchBtn.addEventListener('click', () => {
+        searchRequestId++;
+        lyricsRequestId++;
+        clearTimeout(searchTimeout);
+        clearCurrentLyrics();
+        loader.style.display = 'none';
         searchInput.value = '';
         clearSearchBtn.style.display = 'none';
         resultsDropdown.classList.remove('open');
