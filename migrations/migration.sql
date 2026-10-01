@@ -1,29 +1,29 @@
--- Brings a pre-D1-only database up to the current schema.
+-- Bring the D1 cache schema up to the current transient-lyrics identity model.
 --
--- src/schema.sql is the source of truth and is what a fresh install uses. This file
--- exists only for databases created from an earlier version of this project, whose
--- `tracks` table had six columns and no lyrics storage:
---
---   id, name, artist, album, duration, instrumental
---
--- Everything below brings that forward to match src/schema.sql exactly. Existing rows
--- keep their metadata and are refilled on demand: they start with NULL lyrics and 0
--- format flags, which the read path treats as "not stored yet".
+-- This file is safe for a fresh D1 database and for databases that already have the
+-- current tracks columns but have not yet recorded this migration. SQLite/D1 cannot
+-- add a column only when missing, so older six-column databases should first apply the
+-- legacy column-add migration from the release that introduced D1 lyric caching.
 
-ALTER TABLE tracks ADD COLUMN karaoke TEXT;
-ALTER TABLE tracks ADD COLUMN synced TEXT;
-ALTER TABLE tracks ADD COLUMN plain TEXT;
-ALTER TABLE tracks ADD COLUMN karaoke_ok INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tracks ADD COLUMN synced_ok INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tracks ADD COLUMN plain_ok INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE tracks ADD COLUMN norm TEXT;
-
--- Retention timestamp, so the daily purge can drop lyrics held longer than the window.
-ALTER TABLE tracks ADD COLUMN fetched_at INTEGER;
+CREATE TABLE IF NOT EXISTS tracks (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  album TEXT,
+  duration INTEGER,
+  instrumental INTEGER NOT NULL DEFAULT 0,
+  karaoke TEXT,
+  synced TEXT,
+  plain TEXT,
+  karaoke_ok INTEGER NOT NULL DEFAULT 0,
+  synced_ok INTEGER NOT NULL DEFAULT 0,
+  plain_ok INTEGER NOT NULL DEFAULT 0,
+  norm TEXT,
+  fetched_at INTEGER
+);
 
 -- Name -> id index, replacing the per-request KV lookup.
-CREATE INDEX IF NOT EXISTS idx_tracks_norm ON tracks(norm);
-CREATE INDEX IF NOT EXISTS idx_tracks_name_artist ON tracks(name, artist);
+CREATE INDEX IF NOT EXISTS names ON tracks(name, artist);
 
 -- Negative cache and upstream cooldowns, replacing the KV keys.
 CREATE TABLE IF NOT EXISTS cache_flags (
@@ -36,3 +36,56 @@ CREATE TABLE IF NOT EXISTS cache_flags (
 -- Existing rows get a full retention window from upgrade time rather than being purged
 -- on the first cron run, since they were fetched recently enough.
 UPDATE tracks SET fetched_at = (strftime('%s', 'now') * 1000) WHERE fetched_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS track_ids (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  duration INTEGER,
+  isrc TEXT,
+  first_seen INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS isrc ON track_ids(isrc) WHERE isrc IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS track_keys (
+  key TEXT PRIMARY KEY,
+  track_id TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS track ON track_keys(track_id);
+
+INSERT INTO track_ids (id, name, artist, duration, first_seen)
+SELECT id, name, artist, duration, COALESCE(fetched_at, 0)
+FROM (
+  SELECT t.*,
+         ROW_NUMBER() OVER (
+           PARTITION BY norm
+           ORDER BY (karaoke IS NOT NULL AND synced IS NOT NULL AND plain IS NOT NULL) DESC,
+                    (synced IS NOT NULL AND plain IS NOT NULL) DESC,
+                    (karaoke IS NOT NULL OR synced IS NOT NULL OR plain IS NOT NULL) DESC,
+                    id
+         ) AS rank
+  FROM tracks t
+  WHERE norm IS NOT NULL AND norm <> ''
+)
+WHERE rank = 1
+ON CONFLICT(id) DO NOTHING;
+
+INSERT OR IGNORE INTO track_keys (key, track_id)
+SELECT norm, id FROM tracks
+WHERE norm IS NOT NULL AND norm <> '';
+
+CREATE TABLE IF NOT EXISTS flags (
+  key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  PRIMARY KEY (key, kind)
+);
+
+INSERT OR REPLACE INTO flags (key, kind, expires_at)
+SELECT norm, kind, expires_at FROM cache_flags;
+
+DROP INDEX IF EXISTS idx_tracks_id;
+DROP INDEX IF EXISTS idx_tracks_norm;
+DROP INDEX IF EXISTS idx_tracks_name_artist;
