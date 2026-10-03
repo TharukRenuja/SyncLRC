@@ -170,6 +170,10 @@ export function isRelevant(track, artist, candTitle, candArtist) {
 // Line count vs word count, so a track with only line timings is not treated as karaoke.
 export function isWordLevelKaraoke(text) {
   if (!text) return false;
+  const content = text.replace(/\[\d+:\d{2}(?:[.:]\d+)?\]|<\d+:\d{2}(?:[.:]\d+)?>/g, '')
+    .replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  if (['纯音乐请欣赏', '純音樂請欣賞', '纯音乐', '純音樂', 'instrumental',
+    'instrumentalmusicpleaseenjoy'].includes(content)) return false;
   const lineTags = (text.match(/\[\d+:\d{2}(?:[.:]\d+)?\]/g) || []).length;
   const wordTags = (text.match(/<\d+:\d{2}(?:[.:]\d+)?>/g) || []).length;
   if (lineTags === 0 || wordTags < 2) return false;

@@ -29,8 +29,8 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
 
 **Parameters:**
 - `q`: (Required) Search term (track or artist name).
-- `limit`: (Optional) Max results (default `10`).
-- `offset`: (Optional) Pagination offset (default `0`).
+- `limit`: (Optional) Integer from `1` to `50` (default `10`).
+- `offset`: (Optional) Integer from `0` to `1000` (default `0`).
 
 **Response:**
 ```json
