@@ -1,15 +1,9 @@
 const UA = 'SyncLRC/v1.1.2 (https://github.com/TharukRenuja/SyncLRC)';
 const UPSTREAM_TIMEOUT_MS = 20000;
-const UPSTREAM_INLINE_BUDGET_MS = 3000;
+const UPSTREAM_INLINE_BUDGET_MS = 750;
 const NEG_TTL = 300;
 const NEG_TTL_UPSTREAM = 3600;
-// Dedup window for concurrent upstream calls on the same track.
-// Dedupe window for the upstream scrape. Long enough that a track is not re-scraped
-// every minute: a short window leaves NEG_TTL_UPSTREAM (1h) as the only miss
-// suppression, and non-miss failures then re-enter the slow path on every request.
 const UPSTREAM_COOLDOWN_TTL = 3600;
-// Backoff after a failed upstream. Shorter than the success cooldown so a transient
-// 504 is retried soon, but long enough that a broken upstream is not hammered.
 const UPSTREAM_FAILURE_TTL = 120;
 const RETENTION_DAYS = 1;
 
@@ -201,7 +195,7 @@ function pickType(combined) {
 }
 
 function buildResponse(combined, reqType, id, track, artist, meta, { pending = false } = {}) {
-  const base = { album: meta?.album || null, duration: meta?.duration || null, instrumental: meta?.instrumental || false };
+  const base = { album: meta?.album ?? null, duration: meta?.duration ?? null, instrumental: !!meta?.instrumental };
   // Pending responses use a short cache so clients can see the later karaoke upgrade.
   const cacheControl = pending ? 'public, max-age=60' : 'public, max-age=86400';
   const headers = pending ? { 'Synclrc-Pending': 'karaoke' } : {};
@@ -230,11 +224,7 @@ function buildResponse(combined, reqType, id, track, artist, meta, { pending = f
 }
 
 
-// Databases created before the metadata migration still hold lyric text and identities in
-// `tracks`/`track_ids`/`track_keys`. Reading those as a fallback doubles every cache-miss
-// lookup, and a remote D1 query costs ~280ms, so it is opt-in via LEGACY_FALLBACKS=1.
-// Migrations copy that data into `lyrics`/`keys`, so leaving it off only costs a refetch
-// for rows whose bodies were never migrated.
+// Legacy reads are opt-in after migration.
 function legacyFallbacksEnabled(env) {
   return env?.LEGACY_FALLBACKS === '1' || env?.LEGACY_FALLBACKS === 'true';
 }
@@ -261,10 +251,22 @@ async function lookupByKeys(keys, env) {
   ).bind(...keys).first().catch(() => null) || null;
 }
 
+async function lookupRequestMetadata(keys, name, artist, env) {
+  if (legacyFallbacksEnabled(env)) {
+    return await lookupByKeys(keys, env) || await lookupByName(name, artist, env);
+  }
+  const placeholders = keys.map(() => '?').join(',');
+  return await env.D1_DB.prepare(
+    `SELECT ${LYRIC_COLUMNS} FROM lyrics WHERE id IN (
+       SELECT lyric_id FROM keys WHERE key IN (${placeholders})
+     )
+     UNION ALL
+     SELECT ${LYRIC_COLUMNS} FROM lyrics WHERE name = ? AND artist = ?
+     LIMIT 1`
+  ).bind(...keys, name, artist).first();
+}
+
 async function lookupIdentityByKeys(keys, env) {
-  // `lyrics` has exactly the LYRIC_COLUMNS set, so this was the same statement as
-  // lookupByKeys with a wider select list. Reuse it rather than pay for a second
-  // identical round trip on every cold miss.
   return await lookupByKeys(keys, env);
 }
 
@@ -321,22 +323,14 @@ async function setFlag(key, kind, ttl, env) {
 
 // Claim the next upstream fetch so bursts do not fan out.
 async function claimUpstream(key, env) {
-  const fresh = Date.now() + UPSTREAM_COOLDOWN_TTL * 1000;
+  const now = Date.now();
+  const fresh = now + UPSTREAM_COOLDOWN_TTL * 1000;
   const res = await env.D1_DB.prepare(
-    'INSERT OR IGNORE INTO flags (key, kind, expires_at) VALUES (?, ?, ?)'
-  ).bind(key, 'cooldown', fresh).run();
-  if ((res?.meta?.changes ?? 0) > 0) return true;
-
-  const row = await env.D1_DB.prepare(
-    'SELECT expires_at FROM flags WHERE key = ? AND kind = ?'
-  ).bind(key, 'cooldown').first();
-  if (!row || row.expires_at <= Date.now()) {
-    await env.D1_DB.prepare(
-      'UPDATE flags SET expires_at = ? WHERE key = ? AND kind = ?'
-    ).bind(fresh, key, 'cooldown').run();
-    return true;
-  }
-  return false;
+    `INSERT INTO flags (key, kind, expires_at) VALUES (?, ?, ?)
+     ON CONFLICT(key, kind) DO UPDATE SET expires_at = excluded.expires_at
+     WHERE flags.expires_at <= ?`
+  ).bind(key, 'cooldown', fresh, now).run();
+  return (res?.meta?.changes ?? 0) > 0;
 }
 
 async function clearFlag(key, kind, env) {
@@ -408,11 +402,13 @@ async function storeCombined(track, artist, combined, meta, env, keys = []) {
   const album = meta?.album ?? existing?.album ?? null;
   const duration = meta?.duration ?? existing?.duration ?? null;
 
-  await env.R2_BUCKET.put(`lyrics/${id}.json`, JSON.stringify(merged), {
-    httpMetadata: { contentType: 'application/json' }
-  });
+  if (!instrumental) {
+    await env.R2_BUCKET.put(`lyrics/${id}.json`, JSON.stringify(merged), {
+      httpMetadata: { contentType: 'application/json' }
+    });
+  }
 
-  await env.D1_DB.prepare(
+  const metadataStatement = env.D1_DB.prepare(
     `INSERT INTO lyrics (id, isrc, name, artist, album, duration, instrumental, karaoke, synced, plain)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
@@ -428,9 +424,12 @@ async function storeCombined(track, artist, combined, meta, env, keys = []) {
    ).bind(
     id, isrc, track, artist, album, duration, instrumental,
     merged.karaoke ? 1 : 0, merged.synced ? 1 : 0, merged.plain ? 1 : 0
-  ).run();
+  );
 
-  await rememberKeys(id, allKeys, env, { replace: !!identity });
+  const verb = identity ? 'INSERT OR REPLACE' : 'INSERT OR IGNORE';
+  await env.D1_DB.batch([metadataStatement, ...allKeys.map(key =>
+    env.D1_DB.prepare(`${verb} INTO keys (key, lyric_id) VALUES (?, ?)`).bind(key, id)
+  )]);
 
   return { id, merged };
 }
@@ -496,14 +495,12 @@ async function purgeExpired(env) {
     'DELETE FROM tracks WHERE fetched_at IS NULL OR fetched_at < ?'
   ).bind(cutoff).run().catch(() => ({ meta: { changes: 0 } }));
 
-  // R2 is the transient lyric cache. Keep D1 metadata/keys indefinitely so an
-  // expired id can be rebuilt from its stored name and artist.
   let cursor;
   let deletedObjects = 0;
   do {
     const page = await env.R2_BUCKET.list({ prefix: 'lyrics/', limit: 1000, cursor });
     const expired = (page.objects || []).filter(obj =>
-      obj.lastModified && obj.lastModified.getTime() < cutoff);
+      obj.uploaded && obj.uploaded.getTime() < cutoff);
     if (expired.length) {
       await env.R2_BUCKET.delete(expired.map(obj => obj.key));
       deletedObjects += expired.length;
@@ -519,8 +516,7 @@ async function purgeExpired(env) {
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
 
-  // Legacy D1 lyric rows may not have been copied to R2 yet. If their bodies
-  // are about to expire, clear availability only when no R2 copy exists.
+  // Preserve availability if a legacy body already has an R2 copy.
   for (const row of expiredRows.results || []) {
     const object = await env.R2_BUCKET.head(`lyrics/${row.id}.json`);
     if (!object) {
@@ -569,8 +565,14 @@ async function handleGetLyrics(id, url, env, ctx) {
 
   if (id) {
     const row = await lookupById(id, env);
-    const identity = row ? null : await lookupIdentityById(id, env);
+    const identity = row;
     if (!row && !identity) return errorResponse('Lyrics with provided ID not found', 404);
+
+    if (row.instrumental) {
+      return buildResponse({ karaoke: null, synced: null, plain: null }, reqType, id,
+        row.name, row.artist,
+        { album: row.album, duration: row.duration, instrumental: true });
+    }
 
     const combined = row ? await combinedForRow(row, env) : { karaoke: null, synced: null, plain: null };
     if (combined.karaoke || combined.synced || combined.plain) {
@@ -579,12 +581,6 @@ async function handleGetLyrics(id, url, env, ctx) {
       const pending = !combined.karaoke;
       if (pending) ctx.waitUntil(recheckTrack(trackName, [row.artist], env, row.id));
       return buildResponse(combined, reqType, id, trackName, row.artist, meta, { pending });
-    }
-
-    if (row?.instrumental || identity?.instrumental) {
-      return buildResponse({ karaoke: null, synced: null, plain: null }, reqType, id,
-        row?.name || identity.name, row?.artist || identity.artist,
-        { album: row?.album, duration: row?.duration || identity?.duration, instrumental: true });
     }
 
     const sourceName = stripSearchArtistPrefix(row?.name || identity.name, row?.artist || identity.artist);
@@ -602,7 +598,8 @@ async function handleGetLyrics(id, url, env, ctx) {
       duration: result.meta.duration || row?.duration || identity?.duration || null,
       instrumental: result.instrumental || !!row?.instrumental
     };
-    return buildResponse(result.combined, reqType, id, result.track, result.artist, meta);
+    return buildResponse(result.combined, reqType, id, result.track, result.artist, meta,
+      { pending: !!result.pendingUpstream });
   }
 
   if (!track || !artist) {
@@ -614,13 +611,16 @@ async function handleGetLyrics(id, url, env, ctx) {
   const requestKeys = lookupKeys(track, artists);
   const primaryKey = requestKeys[0];
 
-  let row = await lookupByKeys(requestKeys, env);
-  if (!row) row = await lookupByName(track, artist, env);
+  const row = await lookupRequestMetadata(requestKeys, track, artist, env);
 
   if (row) {
+    if (row.instrumental) {
+      return buildResponse({ karaoke: null, synced: null, plain: null }, reqType, row.id,
+        row.name, row.artist,
+        { album: row.album, duration: row.duration, instrumental: true });
+    }
     const combined = await combinedForRow(row, env);
     if (combined.karaoke || combined.synced || combined.plain) {
-      await rememberKeys(row.id, requestKeys, env);
       const trackName = stripSearchArtistPrefix(row.name, row.artist);
       const meta = { album: row.album, duration: row.duration, instrumental: !!row.instrumental };
       const pending = !combined.karaoke;
@@ -629,7 +629,7 @@ async function handleGetLyrics(id, url, env, ctx) {
     }
   }
 
-  const identity = await lookupIdentityByKeys(requestKeys, env);
+  const identity = row;
   if (identity) {
     const result = await buildFromSources(identity.name, [identity.artist, ...artists], album, duration || identity.duration, env, {
       id: identity.id,
@@ -646,6 +646,7 @@ async function handleGetLyrics(id, url, env, ctx) {
       return buildResponse(result.combined, reqType, result.id, result.track, result.artist, meta,
         { pending: !!result.pendingUpstream });
     }
+    return errorResponse('Lyrics not found', 404);
   }
 
   if (await getFlag(primaryKey, 'neg', env)) {
@@ -752,8 +753,7 @@ async function buildFromSources(track, artists, album, duration, env, identity =
   if (!combined.karaoke && !combined.synced && !combined.plain) {
     // Only 404 is a cacheable miss; 504 may succeed later.
     if (upstream.status === 'miss') await setFlag(primaryKey, 'neg', NEG_TTL_UPSTREAM, env);
-    // Back off rather than clearing the claim, otherwise the next request re-scrapes
-    // immediately and a failing upstream turns into a retry storm.
+    // Back off on failure to avoid immediate retries.
     if (upstream.status !== 'ok') {
       await setFlag(primaryKey, 'cooldown', UPSTREAM_FAILURE_TTL, env).catch(() => {});
     }
@@ -808,15 +808,21 @@ async function recheckTrack(track, artists, env, targetId = null) {
   let row = targetId ? await lookupById(targetId, env) : null;
   if (!row) row = await lookupByKeys(keys, env);
   if (!row) row = await lookupByName(track, artist, env);
-  if (isComplete(row)) return;
+  if (row?.instrumental || isComplete(row)) return;
+  if (await getFlag(primaryKey, 'neg', env)) return;
 
   if (!(await claimUpstream(primaryKey, env))) return;
 
+  let upgraded = false;
   try {
-    await runRecheck(primaryKey, row, track, artists, env, keys);
+    upgraded = await runRecheck(primaryKey, row, track, artists, env, keys);
   } catch {
   } finally {
-    await clearFlag(primaryKey, 'cooldown', env).catch(() => {});
+    if (upgraded) {
+      await clearFlag(primaryKey, 'cooldown', env).catch(() => {});
+    } else {
+      await setFlag(primaryKey, 'cooldown', UPSTREAM_FAILURE_TTL, env).catch(() => {});
+    }
   }
 }
 
@@ -827,16 +833,15 @@ async function runRecheck(primaryKey, row, track, artists, env, keys = []) {
   const result = await fetchFromUpstream(recheckTrackName, recheckArtists, env);
 
   if (result.status !== 'ok') {
-    const hasCachedLyrics = !!(row?.karaoke_ok || row?.synced_ok || row?.plain_ok
-      || row?.karaoke || row?.synced || row?.plain);
-    if (result.status === 'miss' && !hasCachedLyrics) {
+    // This suppresses karaoke rechecks, not delivery of cached plain/synced lyrics.
+    if (result.status === 'miss') {
       await setFlag(primaryKey, 'neg', NEG_TTL_UPSTREAM, env);
     }
-    return;
+    return false;
   }
 
   const karaoke = sanitizeLyrics(result.lyrics);
-  if (!karaoke) return;
+  if (!karaoke) return false;
 
   const [synced] = convertLyrics(karaoke, 'karaoke', 'synced');
   const [plain] = convertLyrics(karaoke, 'karaoke', 'plain');
@@ -849,6 +854,22 @@ async function runRecheck(primaryKey, row, track, artists, env, keys = []) {
   await storeCombined(recheckTrackName, recheckArtists[0], merged,
     { id: row?.id || null, instrumental: false }, env, unique([...keys, ...lookupKeys(recheckTrackName, recheckArtists)]));
   await clearFlag(primaryKey, 'neg', env);
+  return true;
+}
+
+async function prefetchSearchKaraoke(results, env) {
+  const seen = new Set();
+  // Prefetch only the top two results, sequentially.
+  for (const result of results.slice(0, 2)) {
+    if (result.instrumental || result.lyrics.karaoke || seen.has(result.id)) continue;
+    seen.add(result.id);
+    try {
+      await recheckTrack(stripSearchArtistPrefix(result.track, result.artist),
+        [result.artist], env, result.id);
+    } catch {
+      // A background upgrade failure must not prevent upgrading the next result.
+    }
+  }
 }
 
 function stripSearchArtistPrefix(trackName, artistName) {
@@ -966,7 +987,13 @@ async function handleSearch(request, url, env, ctx) {
   });
   if (searchHits.length) {
     await persistSearchMetadata(searchHits, env);
-    ctx.waitUntil(storeSearchHits(searchHits, env));
+  }
+  if (finalResults.length) {
+    ctx.waitUntil((async () => {
+      // Save search bodies before upgrading karaoke.
+      if (searchHits.length) await storeSearchHits(searchHits, env);
+      await prefetchSearchKaraoke(finalResults, env);
+    })());
   }
 
   return jsonResponse({
