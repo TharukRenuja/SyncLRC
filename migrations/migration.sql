@@ -89,3 +89,60 @@ SELECT norm, kind, expires_at FROM cache_flags;
 DROP INDEX IF EXISTS idx_tracks_id;
 DROP INDEX IF EXISTS idx_tracks_norm;
 DROP INDEX IF EXISTS idx_tracks_name_artist;
+
+-- Move durable identity into the new metadata table. Lyrics themselves are
+-- copied to R2 lazily when requested; old `tracks` rows remain a compatibility
+-- cache and continue to be purged by the daily job during the transition.
+CREATE TABLE IF NOT EXISTS lyrics (
+  id TEXT PRIMARY KEY,
+  isrc TEXT,
+  name TEXT NOT NULL,
+  artist TEXT NOT NULL,
+  album TEXT,
+  duration INTEGER,
+  instrumental INTEGER NOT NULL DEFAULT 0,
+  karaoke INTEGER NOT NULL DEFAULT 0,
+  synced INTEGER NOT NULL DEFAULT 0,
+  plain INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS keys (
+  key TEXT PRIMARY KEY,
+  lyric_id TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS lyric ON keys(lyric_id);
+
+INSERT OR IGNORE INTO lyrics (id, isrc, name, artist, album, duration, instrumental, karaoke, synced, plain)
+SELECT ids.id, ids.isrc, COALESCE(tracks.name, ids.name), COALESCE(tracks.artist, ids.artist),
+       tracks.album, COALESCE(tracks.duration, ids.duration),
+       COALESCE(tracks.instrumental, 0),
+       CASE WHEN tracks.karaoke IS NOT NULL AND tracks.karaoke <> '' THEN 1 ELSE 0 END,
+       CASE WHEN tracks.synced IS NOT NULL AND tracks.synced <> '' THEN 1 ELSE 0 END,
+       CASE WHEN tracks.plain IS NOT NULL AND tracks.plain <> '' THEN 1 ELSE 0 END
+FROM track_ids AS ids LEFT JOIN tracks ON tracks.id = ids.id;
+
+INSERT OR IGNORE INTO lyrics (id, name, artist, album, duration, instrumental, karaoke, synced, plain)
+SELECT id, name, artist, album, duration, instrumental,
+       CASE WHEN karaoke IS NOT NULL AND karaoke <> '' THEN 1 ELSE 0 END,
+       CASE WHEN synced IS NOT NULL AND synced <> '' THEN 1 ELSE 0 END,
+       CASE WHEN plain IS NOT NULL AND plain <> '' THEN 1 ELSE 0 END
+FROM tracks;
+
+INSERT OR IGNORE INTO keys (key, lyric_id)
+SELECT key, track_id FROM track_keys;
+
+INSERT OR IGNORE INTO keys (key, lyric_id)
+SELECT norm, id FROM tracks WHERE norm IS NOT NULL AND norm <> '';
+
+-- The legacy track_ids index has the same global SQLite name. Move it to the
+-- new metadata table, preserving the unique-ISRC invariant.
+DROP INDEX IF EXISTS isrc;
+CREATE UNIQUE INDEX IF NOT EXISTS isrc ON lyrics(isrc) WHERE isrc IS NOT NULL;
+CREATE INDEX IF NOT EXISTS lyrics_names ON lyrics(name, artist);
+
+CREATE TABLE IF NOT EXISTS stats (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER
+);

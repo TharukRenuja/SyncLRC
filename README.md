@@ -131,12 +131,13 @@ All lyric content is fetched on-demand from third-party sources. The project doe
 claim ownership of third-party lyrics, which remain the property of their respective
 owners.
 
-Lyrics are cached for one day, not archived. A daily cron deletes anything not requested
-in the last 24 hours, so the Worker does not accumulate a lyrics corpus.
+Lyrics are cached for one day, not archived. A daily cron deletes R2 lyric objects and
+transient legacy D1 rows that have not been requested in the last 24 hours. Durable D1
+metadata and lookup keys remain so an expired lyric id can be rebuilt on demand.
 
-The cache lives in D1 rather than KV because the project outgrew KV's free-tier limits:
-KV allows 100,000 reads and 1,000 writes per day, which a read-heavy API exceeds. When
-you self-host, that database is yours to manage.
+Track metadata and lookup keys live in D1; lyric bodies live in R2 and are expired daily.
+This avoids storing large lyric payloads in the permanent metadata table. When you
+self-host, both resources are yours to manage.
 
 The SyncLRC source code is licensed under AGPL-3.0. That license applies to the software
 itself and does not grant rights to third-party copyrighted content retrieved through the
@@ -146,16 +147,23 @@ software.
 
 ## Self-Hosting
 
-The Worker needs a single binding: **D1**. There is no KV or R2 requirement, and the lyrics text is stored in D1 alongside the track metadata and the name index.
+The Worker needs two bindings: **D1** for metadata/lookup keys and **R2** for lyric bodies.
+Create the R2 bucket named in `wrangler.jsonc` (the example uses `synclyrics-oss`).
 
 1. Copy `wrangler.example.jsonc` to `wrangler.jsonc` and set your `database_id`, `UPSTREAM_URL`, and `UPSTREAM_SECRET`.
-2. Create the schema:
+2. Create the R2 bucket:
+
+   ```bash
+   npx wrangler r2 bucket create synclyrics-oss
+   ```
+
+3. Create the schema:
 
    ```bash
    npx wrangler d1 execute <database_name> --remote --file=src/schema.sql
    ```
 
-3. Deploy:
+4. Deploy:
 
    ```bash
    npx wrangler deploy
