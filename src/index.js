@@ -262,19 +262,10 @@ async function lookupByKeys(keys, env) {
 }
 
 async function lookupIdentityByKeys(keys, env) {
-  if (!keys.length) return null;
-  const placeholders = keys.map(() => '?').join(',');
-  const row = await env.D1_DB.prepare(
-    `SELECT lyrics.* FROM keys JOIN lyrics ON lyrics.id = keys.lyric_id
-     WHERE keys.key IN (${placeholders})
-     LIMIT 1`
-  ).bind(...keys).first().catch(() => null);
-  if (row || !legacyFallbacksEnabled(env)) return row || null;
-  return await env.D1_DB.prepare(
-    `SELECT track_ids.id, track_ids.name, track_ids.artist, track_ids.duration, track_ids.isrc
-     FROM track_keys JOIN track_ids ON track_ids.id = track_keys.track_id
-     WHERE track_keys.key IN (${placeholders}) LIMIT 1`
-  ).bind(...keys).first().catch(() => null) || null;
+  // `lyrics` has exactly the LYRIC_COLUMNS set, so this was the same statement as
+  // lookupByKeys with a wider select list. Reuse it rather than pay for a second
+  // identical round trip on every cold miss.
+  return await lookupByKeys(keys, env);
 }
 
 async function lookupIdentityByIsrc(isrc, env) {
