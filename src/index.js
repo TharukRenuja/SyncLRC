@@ -4,7 +4,13 @@ const UPSTREAM_INLINE_BUDGET_MS = 3000;
 const NEG_TTL = 300;
 const NEG_TTL_UPSTREAM = 3600;
 // Dedup window for concurrent upstream calls on the same track.
-const UPSTREAM_COOLDOWN_TTL = 60;
+// Dedupe window for the upstream scrape. Long enough that a track is not re-scraped
+// every minute: a short window leaves NEG_TTL_UPSTREAM (1h) as the only miss
+// suppression, and non-miss failures then re-enter the slow path on every request.
+const UPSTREAM_COOLDOWN_TTL = 3600;
+// Backoff after a failed upstream. Shorter than the success cooldown so a transient
+// 504 is retried soon, but long enough that a broken upstream is not hammered.
+const UPSTREAM_FAILURE_TTL = 120;
 const RETENTION_DAYS = 1;
 
 import { sanitizeLyrics } from './sanitize.js';
@@ -224,11 +230,19 @@ function buildResponse(combined, reqType, id, track, artist, meta, { pending = f
 }
 
 
+// Databases created before the metadata migration still hold lyric text and identities in
+// `tracks`/`track_ids`/`track_keys`. Reading those as a fallback doubles every cache-miss
+// lookup, and a remote D1 query costs ~280ms, so it is opt-in via LEGACY_FALLBACKS=1.
+// Migrations copy that data into `lyrics`/`keys`, so leaving it off only costs a refetch
+// for rows whose bodies were never migrated.
+function legacyFallbacksEnabled(env) {
+  return env?.LEGACY_FALLBACKS === '1' || env?.LEGACY_FALLBACKS === 'true';
+}
+
 async function lookupById(id, env) {
-  const row = await env.D1_DB.prepare(
+  return await env.D1_DB.prepare(
     `SELECT ${LYRIC_COLUMNS} FROM lyrics WHERE id = ?`
-  ).bind(id).first().catch(() => null);
-  return row || await lookupLegacyById(id, env);
+  ).bind(id).first().catch(() => null) || null;
 }
 
 async function lookupByKeys(keys, env) {
@@ -240,7 +254,7 @@ async function lookupByKeys(keys, env) {
      WHERE keys.key IN (${placeholders})
      LIMIT 1`
   ).bind(...keys).first().catch(() => null);
-  if (row) return row;
+  if (row || !legacyFallbacksEnabled(env)) return row || null;
   return await env.D1_DB.prepare(
     `SELECT tracks.* FROM track_keys JOIN tracks ON tracks.id = track_keys.track_id
      WHERE track_keys.key IN (${placeholders}) LIMIT 1`
@@ -255,7 +269,7 @@ async function lookupIdentityByKeys(keys, env) {
      WHERE keys.key IN (${placeholders})
      LIMIT 1`
   ).bind(...keys).first().catch(() => null);
-  if (row) return row;
+  if (row || !legacyFallbacksEnabled(env)) return row || null;
   return await env.D1_DB.prepare(
     `SELECT track_ids.id, track_ids.name, track_ids.artist, track_ids.duration, track_ids.isrc
      FROM track_keys JOIN track_ids ON track_ids.id = track_keys.track_id
@@ -268,38 +282,30 @@ async function lookupIdentityByIsrc(isrc, env) {
   const row = await env.D1_DB.prepare(
     `SELECT ${LYRIC_COLUMNS} FROM lyrics WHERE isrc = ?`
   ).bind(isrc).first().catch(() => null);
-  if (row) return row;
+  if (row || !legacyFallbacksEnabled(env)) return row || null;
   return await env.D1_DB.prepare(
     'SELECT id, name, artist, duration, isrc FROM track_ids WHERE isrc = ?'
   ).bind(isrc).first().catch(() => null) || null;
 }
 
 async function lookupIdentityById(id, env) {
-  const row = await env.D1_DB.prepare(
+  return await env.D1_DB.prepare(
     `SELECT ${LYRIC_COLUMNS} FROM lyrics WHERE id = ?`
-  ).bind(id).first().catch(() => null);
-  if (row) return row;
-  return await env.D1_DB.prepare(
-    'SELECT id, name, artist, duration, isrc FROM track_ids WHERE id = ?'
   ).bind(id).first().catch(() => null) || null;
-}
-
-async function lookupByLegacyNorm(norm, env) {
-  return await env.D1_DB.prepare(
-    'SELECT * FROM tracks WHERE norm = ?'
-  ).bind(norm).first().catch(() => null) || null;
 }
 
 async function lookupByName(name, artist, env) {
   const row = await env.D1_DB.prepare(
     `SELECT ${LYRIC_COLUMNS} FROM lyrics WHERE name = ? AND artist = ?`
   ).bind(name, artist).first().catch(() => null);
-  return row || await env.D1_DB.prepare(
+  if (row || !legacyFallbacksEnabled(env)) return row || null;
+  return await env.D1_DB.prepare(
     'SELECT * FROM tracks WHERE name = ? AND artist = ?'
   ).bind(name, artist).first().catch(() => null) || null;
 }
 
 async function lookupLegacyById(id, env) {
+  if (!legacyFallbacksEnabled(env)) return null;
   return await env.D1_DB.prepare('SELECT * FROM tracks WHERE id = ?')
     .bind(id).first().catch(() => null) || null;
 }
@@ -396,7 +402,7 @@ function isComplete(row) {
 
 async function storeCombined(track, artist, combined, meta, env, keys = []) {
   const isrc = normalizeIsrc(meta?.isrc);
-  const identity = await lookupIdentityByIsrc(isrc, env);
+  const identity = meta?.id ? { id: meta.id } : await lookupIdentityByIsrc(isrc, env);
   const id = identity?.id || meta?.id || await generateHash(track, artist);
   const allKeys = unique([...(keys.length ? keys : []), ...lookupKeys(track, [artist])]);
   const existing = await lookupById(id, env);
@@ -618,7 +624,6 @@ async function handleGetLyrics(id, url, env, ctx) {
   const primaryKey = requestKeys[0];
 
   let row = await lookupByKeys(requestKeys, env);
-  if (!row) row = await lookupByLegacyNorm(primaryKey, env);
   if (!row) row = await lookupByName(track, artist, env);
 
   if (row) {
@@ -756,7 +761,11 @@ async function buildFromSources(track, artists, album, duration, env, identity =
   if (!combined.karaoke && !combined.synced && !combined.plain) {
     // Only 404 is a cacheable miss; 504 may succeed later.
     if (upstream.status === 'miss') await setFlag(primaryKey, 'neg', NEG_TTL_UPSTREAM, env);
-    if (upstream.status !== 'ok') await clearFlag(primaryKey, 'cooldown', env);
+    // Back off rather than clearing the claim, otherwise the next request re-scrapes
+    // immediately and a failing upstream turns into a retry storm.
+    if (upstream.status !== 'ok') {
+      await setFlag(primaryKey, 'cooldown', UPSTREAM_FAILURE_TTL, env).catch(() => {});
+    }
     return null;
   }
 
@@ -807,7 +816,6 @@ async function recheckTrack(track, artists, env, targetId = null) {
 
   let row = targetId ? await lookupById(targetId, env) : null;
   if (!row) row = await lookupByKeys(keys, env);
-  if (!row) row = await lookupByLegacyNorm(primaryKey, env);
   if (!row) row = await lookupByName(track, artist, env);
   if (isComplete(row)) return;
 
