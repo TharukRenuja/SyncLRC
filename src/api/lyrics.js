@@ -12,7 +12,7 @@ import { NEG_TTL_UPSTREAM, claimUpstream, clearFlag, failureState, getFlag, reme
 import { lookupById, lookupIdentityByIsrc, lookupRequestMetadata, rememberKeys } from '../storage/metadata.js';
 import { buildResponse, errorResponse, sourceFailureResponse } from './response.js';
 
-export const UPSTREAM_INLINE_BUDGET_MS = 750;
+export const UPSTREAM_INLINE_BUDGET_MS = 2000;
 
 export async function handleLyricsRequest(id, url, env, ctx) {
   let options;
@@ -207,8 +207,12 @@ export async function buildFromSources(track, artists, album, duration, env, ide
             failureHttpStatus = result.httpStatus || 503;
             if (!existing?.instrumental && result.status === 'ok' && (!existingCombined.karaoke || featureDue(existingCombined))) {
               const combined = { ...buildCombined(null, result.lyrics), rich: result.rich };
-              await storeCombined(isrcIdentity.name, isrcIdentity.artist, combined,
+              const stored = await storeCombined(isrcIdentity.name, isrcIdentity.artist, combined,
                 { ...meta, id: isrcIdentity.id }, env, recordKeys);
+              if (stored.rejected) {
+                status = 'retry';
+                await recordFeatureAttempt(existing, { status }, env);
+              }
             }
           } finally {
             if (status === 'ok') {
@@ -280,7 +284,7 @@ export async function buildFromSources(track, artists, album, duration, env, ide
 
   const karaokeLyrics = upstream.status === 'ok' ? upstream.lyrics : null;
   const combined = buildCombined(lrclibData, karaokeLyrics);
-  if (upstream.rich) combined.rich = upstream.rich;
+  if (combined.karaoke && upstream.rich) combined.rich = upstream.rich;
 
   if (!combined.karaoke && !combined.synced && !combined.plain) {
     // Only 404 is a cacheable miss; 504 may succeed later.
@@ -294,14 +298,19 @@ export async function buildFromSources(track, artists, album, duration, env, ide
     return { failure: confirmedMiss ? 'miss' : 'retry', httpStatus: upstream.httpStatus || 503, retryAfter: upstream.retryAfter };
   }
 
-  const { id, merged } = await storeCombined(canonTrack, canonArtist, combined, meta, env, recordKeys);
+  const { id, merged, rejected } = await storeCombined(canonTrack, canonArtist, combined, meta, env, recordKeys);
+  if (rejected) {
+    await rememberFailure(primaryKey, { status: 'retry', httpStatus: 503 }, env);
+    await recordFeatureAttempt({ id }, { status: 'retry' }, env);
+    Object.assign(merged, await readCombined(id, env));
+  }
   Object.assign(combined, merged);
-  if (upstreamPromise && karaokeLyrics) await rememberFailure(primaryKey, upstream, env);
+  if (upstreamPromise && karaokeLyrics && !rejected) await rememberFailure(primaryKey, upstream, env);
   await clearFlag(primaryKey, 'miss', env);
-  if (karaokeLyrics && upstreamPromise) await clearFlag(primaryKey, 'inflight', env).catch(() => {});
+  if ((karaokeLyrics || rejected) && upstreamPromise) await clearFlag(primaryKey, 'inflight', env).catch(() => {});
 
   let pendingUpstream = null;
-  if (!karaokeLyrics && upstreamPromise) {
+  if (!karaokeLyrics && upstreamPromise && !rejected) {
     const settle = timedOut ? upstreamPromise : Promise.resolve(upstream);
     pendingUpstream = (async () => {
       let status = 'retry';
@@ -316,13 +325,16 @@ export async function buildFromSources(track, artists, album, duration, env, ide
           if (karaoke) {
             const [synced] = convertLyrics(karaoke, 'karaoke', 'synced');
             const [plain] = convertLyrics(karaoke, 'karaoke', 'plain');
-            await storeCombined(canonTrack, canonArtist, {
+            const stored = await storeCombined(canonTrack, canonArtist, {
               karaoke,
               synced: sanitizeLyrics(synced) || null,
               plain: sanitizeLyrics(plain) || null,
               rich: result.rich
             }, meta, env, recordKeys);
-            await clearFlag(primaryKey, 'miss', env);
+            if (stored.rejected) {
+              status = 'retry';
+              await recordFeatureAttempt({ id }, { status }, env);
+            } else await clearFlag(primaryKey, 'miss', env);
           }
         }
       } catch {

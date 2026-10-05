@@ -179,3 +179,20 @@ export function isWordLevelKaraoke(text) {
   if (lineTags === 0 || wordTags < 2) return false;
   return wordTags >= lineTags * 1.5;
 }
+
+export function lyricsAgree(reference, candidate) {
+  if (!reference) return true;
+  const normalize = text => String(text || '').normalize('NFKC').toLowerCase()
+    .replace(/\[[^\]]*\]|<[^>]*>|\{agent:[^}]*\}/g, '')
+    .replace(/\([^\n)]*\)/g, '')
+    .replace(/[^\p{L}\p{N}\p{M}]/gu, '');
+  const left = normalize(reference), right = normalize(candidate);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.length < 40 || right.length < 40) return false;
+  const grams = text => new Set(Array.from({ length: text.length - 4 }, (_, i) => text.slice(i, i + 5)));
+  const a = grams(left), b = grams(right);
+  let shared = 0;
+  for (const part of a) if (b.has(part)) shared++;
+  return shared / a.size >= 0.75 && shared / b.size >= 0.75;
+}

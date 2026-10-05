@@ -1,4 +1,5 @@
 import { applyDocument, artistArray, nextFeatureCheck } from '../lyrics/document.js';
+import { lyricsAgree } from '../lyrics/match.js';
 import { convertLyrics } from '../lyrics/format.js';
 import { generateHash, lookupKeys, normalizeIsrc, unique } from '../lyrics/normalize.js';
 import { sanitizeLyrics } from '../lyrics/sanitize.js';
@@ -70,21 +71,26 @@ export async function storeCombined(track, artist, combined, meta, env, keys = [
   const allKeys = unique([...(keys.length ? keys : []), ...lookupKeys(track, [artist])]);
   const existing = await lookupById(id, env);
   const oldCombined = existing ? await combinedForRow(existing, env) : {};
+  const reference = oldCombined.plain || combined.plain;
+  const candidate = applyDocument({ ...combined }, combined.rich || meta?.rich);
+  const rejected = !!candidate.karaoke && !lyricsAgree(reference, candidate.karaoke);
+  if (rejected) combined = { plain: reference, synced: oldCombined.synced };
   let merged = {
     ...oldCombined,
     artists: oldCombined.artists || meta?.artists || artistArray(artist),
     karaoke: combined.karaoke || oldCombined.karaoke || null,
     synced: combined.synced || oldCombined.synced || null,
-    plain: combined.plain || oldCombined.plain || null
+    plain: oldCombined.plain || combined.plain || null
   };
 
-  merged = applyDocument(merged, combined.rich || meta?.rich);
+  merged = applyDocument(merged, rejected ? null : combined.rich || meta?.rich);
   if (merged.karaoke) {
     const [synced] = convertLyrics(merged.karaoke, 'karaoke', 'synced');
     const [plain] = convertLyrics(merged.karaoke, 'karaoke', 'plain');
     merged.synced = sanitizeLyrics(synced) || null;
-    merged.plain = sanitizeLyrics(plain) || null;
+    merged.plain ||= sanitizeLyrics(plain) || null;
   }
+  if (rejected) merged.rich = oldCombined.rich || null;
   const instrumental = meta?.instrumental ? 1 : 0;
   const album = meta?.album ?? existing?.album ?? null;
   const duration = meta?.duration ?? existing?.duration ?? null;
@@ -119,7 +125,7 @@ export async function storeCombined(track, artist, combined, meta, env, keys = [
   )]);
 
   await recordFeatures(id, merged, env);
-  return { id, merged };
+  return { id, merged, rejected };
 }
 
 // Save search bodies after their metadata.

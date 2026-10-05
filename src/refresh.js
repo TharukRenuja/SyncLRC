@@ -21,12 +21,16 @@ export async function recheckTrack(track, artists, env, targetId = null, deadlin
   if (timeoutMs <= 0 || !(await claimUpstream(primaryKey, env))) return;
   try {
     const name = stripSearchArtistPrefix(row?.name || track, row?.artist || artists[0]);
-    const result = await fetchFromUpstream(name, artists, env, timeoutMs);
+    let result = await fetchFromUpstream(name, artists, env, timeoutMs);
     await rememberFailure(primaryKey, result, env);
     if (result.status === 'ok') {
-      await storeCombined(name, row?.artist || artists[0], { ...buildCombined(null, result.lyrics), rich: result.rich },
+      const stored = await storeCombined(name, row?.artist || artists[0], { ...buildCombined(null, result.lyrics), rich: result.rich },
         { ...row, id: row?.id, artists: combined?.artists || artists, instrumental: false }, env, keys);
-      await clearFlag(primaryKey, 'miss', env);
+      if (stored.rejected) {
+        result = { status: 'retry', httpStatus: 503 };
+        await rememberFailure(primaryKey, result, env);
+        await recordFeatureAttempt(row, result, env);
+      } else await clearFlag(primaryKey, 'miss', env);
     } else {
       if (result.status === 'miss') await setFlag(primaryKey, 'karaoke-miss', NEG_TTL_UPSTREAM, env);
       await recordFeatureAttempt(row, result, env);

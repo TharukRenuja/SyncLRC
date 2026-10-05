@@ -1,3 +1,4 @@
+import { lyricsAgree } from './match.js';
 import { sanitizeLyrics } from './sanitize.js';
 
 export function detectType(lyrics) {
@@ -41,9 +42,10 @@ export function pickType(combined) {
 }
 
 export function buildCombined(lrclibData, karaokeLyrics) {
-  const combined = { karaoke: null, synced: null, plain: null };
+  const combined = { karaoke: null, synced: null, plain: lrclibData?.plainLyrics || null };
+  const reference = combined.plain || lrclibData?.syncedLyrics;
 
-  if (karaokeLyrics) {
+  if (karaokeLyrics && lyricsAgree(reference, karaokeLyrics)) {
     combined.karaoke = sanitizeLyrics(karaokeLyrics);
   }
 
@@ -51,12 +53,11 @@ export function buildCombined(lrclibData, karaokeLyrics) {
     const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
     combined.synced = sanitizeLyrics(synced) || null;
     const [plain] = convertLyrics(combined.karaoke, 'karaoke', 'plain');
-    combined.plain = sanitizeLyrics(plain) || null;
+    combined.plain ||= sanitizeLyrics(plain) || null;
   } else if (lrclibData) {
     combined.synced = lrclibData.syncedLyrics || null;
     combined.plain = lrclibData.plainLyrics || null;
     if (combined.synced) combined.synced = sanitizeLyrics(combined.synced);
-    if (combined.plain) combined.plain = sanitizeLyrics(combined.plain);
   }
 
   return combined;
