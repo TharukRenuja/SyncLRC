@@ -36,13 +36,13 @@ export function buildResponse(combined, reqType, id, track, artist, meta, { pend
     const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
     combined.synced = sanitizeLyrics(synced) || null;
     const [plain] = convertLyrics(combined.karaoke, 'karaoke', 'plain');
-    combined.plain = sanitizeLyrics(plain) || null;
+    combined.plain ||= sanitizeLyrics(plain) || null;
   }
 
   if (options) {
     let body = { ...base, ...combined };
     if (reqType) {
-      const currentType = pickType(combined);
+      const currentType = reqType === 'plain' && combined.plain ? 'plain' : pickType(combined);
       const [lyrics, type] = convertLyrics(combined[currentType], currentType, reqType);
       body = { ...base, lyrics, type };
     }
@@ -52,7 +52,7 @@ export function buildResponse(combined, reqType, id, track, artist, meta, { pend
 
   if (reqType) {
     const lyrics = combined[reqType] || combined.synced || combined.plain;
-    const type = pickType(combined);
+    const type = reqType === 'plain' && combined.plain ? 'plain' : pickType(combined);
     const [converted, convertedType] = convertLyrics(lyrics, type, reqType);
     return jsonResponse({ lyrics: converted, type: convertedType, id, track, artist, ...base }, 200, cacheControl, headers);
   }
