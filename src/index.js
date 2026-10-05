@@ -7,6 +7,7 @@ const UPSTREAM_FAILURE_TTL = 120;
 const SEARCH_BACKGROUND_BUDGET_MS = 25000;
 const RETENTION_DAYS = 1;
 
+import { lyricOptions, withLyricOptions } from './lyrics-options.js';
 import { sanitizeLyrics } from './sanitize.js';
 import { isRelevant, isWordLevelKaraoke } from './match.js';
 import { normalizeKey, generateHash } from './normalize.js';
@@ -135,7 +136,7 @@ async function fetchDeezerMeta(track, artists, albumName, duration) {
   return null;
 }
 
-// Upstream: 200 found, 404 confirmed miss, 504 timeout; older deployments use `karaoke`.
+// Upstream: 200 found, 404 confirmed miss, 504 timeout; (older deployments use `karaoke`).
 async function fetchFromUpstream(track, artists, env, timeoutMs = UPSTREAM_TIMEOUT_MS) {
   const params = new URLSearchParams({ track });
   for (const artist of artists) params.append('artist', artist);
@@ -147,11 +148,11 @@ async function fetchFromUpstream(track, artists, env, timeoutMs = UPSTREAM_TIMEO
       headers: { 'X-SyncLRC-Secret': env.UPSTREAM_SECRET },
       signal: AbortSignal.timeout(timeoutMs)
     });
-  } catch {
-    return { status: 'retry' };
+  } catch (error) {
+    return { status: 'retry', httpStatus: error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 504 : 503 };
   }
 
-  if (resp.status === 504) return { status: 'retry' };
+  if (resp.status === 503 || resp.status === 504) return { status: 'retry', httpStatus: resp.status };
   if (resp.status === 400 || resp.status === 403) return { status: 'error' };
   if (resp.status === 404) return { status: 'miss' };
   if (resp.status !== 200) return { status: 'retry' };
@@ -360,7 +361,7 @@ async function combinedForRow(row, env) {
   const fromR2 = await readCombined(row.id, env);
   if (fromR2) return fromR2;
 
-  // Transition compatibility: old OSS builds stored lyric text in `tracks`.
+  // Transition compatibility: old builds stored lyric text in `tracks`.
   const legacyRow = typeof row.karaoke === 'string' || typeof row.synced === 'string' || typeof row.plain === 'string'
     ? row
     : await lookupLegacyById(row.id, env);
@@ -484,7 +485,7 @@ async function persistSearchMetadata(hits, env) {
   await env.D1_DB.batch(statements);
 }
 
-// Purge transient lyrics only; identity rows stay for cheap repeat lookups.
+// Purge transient lyrics.
 async function purgeExpired(env) {
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
@@ -556,6 +557,17 @@ function buildCombined(lrclibData, karaokeLyrics) {
 }
 
 
+async function handleLyricsRequest(id, url, env, ctx) {
+  let options;
+  try {
+    options = lyricOptions(url);
+  } catch (error) {
+    return errorResponse(error.message, 400);
+  }
+  const response = await handleGetLyrics(id, url, env, ctx);
+  return options ? withLyricOptions(response, options, env, UPSTREAM_TIMEOUT_MS) : response;
+}
+
 async function handleGetLyrics(id, url, env, ctx) {
   const track = url.searchParams.get('track')?.trim() || '';
   // Repeatable: artist=A&artist=B; first is primary, all are used for matching.
@@ -591,7 +603,7 @@ async function handleGetLyrics(id, url, env, ctx) {
       keys: lookupKeys(sourceName, [sourceArtist]),
       ctx
     });
-    if (result.failure) return sourceFailureResponse(result.failure);
+    if (result.failure) return sourceFailureResponse(result.failure, result.httpStatus);
     if (result.pendingUpstream) ctx.waitUntil(result.pendingUpstream);
 
     const meta = {
@@ -639,7 +651,7 @@ async function handleGetLyrics(id, url, env, ctx) {
       ctx
     });
     if (result?.pendingUpstream) ctx.waitUntil(result.pendingUpstream);
-    if (result.failure) return sourceFailureResponse(result.failure);
+    if (result.failure) return sourceFailureResponse(result.failure, result.httpStatus);
     if (result) {
       const meta = {
         album: result.meta.album,
@@ -659,7 +671,7 @@ async function handleGetLyrics(id, url, env, ctx) {
   const result = await buildFromSources(track, artists, album, duration, env, { keys: requestKeys, ctx });
   if (result?.pendingUpstream) ctx.waitUntil(result.pendingUpstream);
 
-  if (result.failure) return sourceFailureResponse(result.failure);
+  if (result.failure) return sourceFailureResponse(result.failure, result.httpStatus);
 
   const meta = {
     album: result.meta.album,
@@ -670,10 +682,10 @@ async function handleGetLyrics(id, url, env, ctx) {
     { pending: !!result.pendingUpstream });
 }
 
-function sourceFailureResponse(status) {
+function sourceFailureResponse(status, httpStatus = 503) {
   if (status === 'miss') return errorResponse('Lyrics not found', 404);
-  return jsonResponse({ error: status === 'skipped' ? 'Lyrics fetch in progress; retry shortly.' :
-    'Lyrics sources temporarily unavailable; retry shortly.' }, 503, 'no-store',
+  return jsonResponse({ error: httpStatus === 504 ? 'Lyrics sources took too long to respond.' : status === 'skipped' ? 'Lyrics fetch in progress; retry shortly.' :
+    'Lyrics sources temporarily unavailable; retry shortly.' }, httpStatus, 'no-store',
     { 'Retry-After': '5' });
 }
 
@@ -793,7 +805,7 @@ async function buildFromSources(track, artists, album, duration, env, identity =
     if (upstreamPromise && upstream.status !== 'ok') {
       await setFlag(primaryKey, 'cooldown', UPSTREAM_FAILURE_TTL, env).catch(() => {});
     }
-    return { failure: upstream.status };
+    return { failure: upstream.status, httpStatus: upstream.httpStatus || 503 };
   }
 
   const { id } = await storeCombined(canonTrack, canonArtist, combined, meta, env, recordKeys);
@@ -1079,8 +1091,8 @@ export default {
         github: 'https://github.com/TharukRenuja/SyncLRC',
         endpoints: {
           search: { path: '/search', method: 'GET', params: { q: 'string (required)', limit: 'int', offset: 'int' } },
-          lyrics: { path: '/lyrics', method: 'GET', params: { track: 'string (required)', artist: 'string (required, repeatable for collabs)', type: 'karaoke|synced|plain', album: 'string', duration: 'int' } },
-          lyricsById: { path: '/lyrics/{id}', method: 'GET', path_param: { id: '32-char hex hash' }, params: { type: 'karaoke|synced|plain' } }
+          lyrics: { path: '/lyrics', method: 'GET', params: { track: 'string (required)', artist: 'string (required, repeatable for collabs)', type: 'karaoke|synced|plain', format: 'lrc|ttml (optional)', include: 'agents,background (optional)', album: 'string', duration: 'int' } },
+          lyricsById: { path: '/lyrics/{id}', method: 'GET', path_param: { id: '32-char hex hash' }, params: { type: 'karaoke|synced|plain', format: 'lrc|ttml (optional)', include: 'agents,background (optional)' } }
         }
       }, 200, 'public, max-age=86400');
     }
@@ -1088,11 +1100,11 @@ export default {
     if (path.startsWith('/lyrics/') && method === 'GET') {
       const id = path.slice('/lyrics/'.length);
       if (!id) return errorResponse('Missing lyrics ID', 400);
-      return handleGetLyrics(id, url, env, ctx);
+      return handleLyricsRequest(id, url, env, ctx);
     }
 
     if (path === '/lyrics' && method === 'GET') {
-      return handleGetLyrics(null, url, env, ctx);
+      return handleLyricsRequest(null, url, env, ctx);
     }
 
     if (path === '/search' && method === 'GET') {
