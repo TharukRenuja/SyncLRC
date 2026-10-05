@@ -74,6 +74,8 @@ them is enough to match.
 - `type`: (Optional) `karaoke`, `synced`, or `plain`.
 - `album`: (Optional) Album name for more accurate matching.
 - `duration`: (Optional) Track duration in seconds for more accurate matching.
+- `format`: (Optional) `lrc` or `ttml`. Defaults to LRC.
+- `include`: (Optional) Comma-separated `agents` and/or `background`. Requires `type=karaoke`.
 
 **Response:**
 ```json
@@ -89,6 +91,51 @@ them is enough to match.
   "plain": "Lyrics text..."
 }
 ```
+
+**Optional Formats & Vocal Features:**
+
+`GET /lyrics?track={track}&artist={artist}&format=lrc&include=agents,background`
+
+`GET /lyrics/{id}?format=ttml&include=agents,background`
+
+Use these options with either endpoint. Omit them for the default response.
+For LRC, read `{agent:v1}` as the singer ID and parenthesized lines as background
+vocals. TTML carries these roles in its XML.
+
+**Response with Optional Features:**
+
+```json
+{
+  "id": "abc123...",
+  "track": "Song Name",
+  "artist": "Artist Name",
+  "album": "Album Name",
+  "duration": 215,
+  "instrumental": false,
+  "lyrics": "[00:00.00]{agent:v1}<00:00.05>Hello",
+  "type": "karaoke",
+  "format": "lrc",
+  "features": {
+    "requested": ["agents", "background"],
+    "included": ["agents"],
+    "unavailable": ["background"],
+    "unknown": []
+  }
+}
+```
+
+- `requested`: Features requested by the caller.
+- `included`: Features present in the returned lyrics.
+- `unavailable`: Requested features absent from the checked results.
+- `unknown`: Requested features that could not be verified because a source failed or timed out.
+
+**Error Responses:**
+
+- `400`: Invalid `format`, `include`, or incompatible `type`.
+- `404`: No matching lyrics, or an existing cached miss.
+- `503`: Lyrics sources temporarily unavailable and no usable fallback.
+- `504`: Upstream search timed out and no usable fallback.
+
 </details>
 
 ---
