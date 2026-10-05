@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
   "name": "synclrc",
   "main": "src/index.js",
   "compatibility_date": "2025-02-01",
@@ -19,14 +18,14 @@
   "d1_databases": [
     {
       "binding": "D1_DB",
-      "database_name": "synclrc-db",
+      "database_name": "synclrc-d1",
       "database_id": "your-d1-id"
     }
   ],
   "r2_buckets": [
     {
       "binding": "R2_BUCKET",
-      "bucket_name": "synclyrics-oss"
+      "bucket_name": "synclrc-r2"
     }
   ]
 }
