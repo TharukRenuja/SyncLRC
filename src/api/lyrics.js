@@ -25,8 +25,15 @@ export async function handleLyricsRequest(id, url, env, ctx) {
 }
 
 export async function handleGetLyrics(id, url, env, ctx, options = null) {
-  const respond = (combined, type, id, track, artist, meta, state = {}) =>
-    buildResponse(combined, type, id, track, artist, meta, { ...state, options });
+  const respond = async (combined, type, id, track, artist, meta, state = {}) => {
+    const keys = unique([...lookupKeys(track, combined.artists || [artist]),
+      ...lookupKeys(url.searchParams.get('track') || track, url.searchParams.getAll('artist'))]);
+    const active = !state.upstreamSettled && !combined.karaoke && !meta?.instrumental && (await Promise.all(keys.map(async key =>
+      await getFlag(key, 'inflight', env) && !(await failureState(key, env)) &&
+      !(await getFlag(key, 'karaoke-miss', env))))).some(Boolean);
+    return buildResponse(combined, type, id, track, artist, meta,
+      { ...state, karaokePending: active, options });
+  };
   const refresh = async (row, combined, artists) => {
     if (row.instrumental || !(combined.karaoke || combined.synced || combined.plain) || !featureDue(combined)) return combined;
     const task = recheckTrack(row.name, artists, env, row.id).catch(() => {});
@@ -80,7 +87,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
       instrumental: result.instrumental || !!row?.instrumental
     };
     return respond(result.combined, reqType, id, result.track, result.artist, meta,
-      { pending: !!result.pendingUpstream });
+      { pending: !!result.pendingUpstream, upstreamSettled: result.upstreamSettled });
   }
 
   if (!track || !artist) {
@@ -127,7 +134,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
         instrumental: result.instrumental
       };
       return respond(result.combined, reqType, result.id, result.track, result.artist, meta,
-        { pending: !!result.pendingUpstream });
+        { pending: !!result.pendingUpstream, upstreamSettled: result.upstreamSettled });
     }
     return errorResponse('Lyrics not found', 404);
   }
@@ -147,7 +154,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
     instrumental: result.instrumental
   };
   return respond(result.combined, reqType, result.id, result.track, result.artist, meta,
-    { pending: !!result.pendingUpstream });
+    { pending: !!result.pendingUpstream, upstreamSettled: result.upstreamSettled });
 }
 
 export async function buildFromSources(track, artists, album, duration, env, identity = {}) {
@@ -158,9 +165,13 @@ export async function buildFromSources(track, artists, album, duration, env, ide
   const deezerPromise = fetchDeezerMeta(track, artists, album, duration);
   const lrclibData = await lrclibPromise;
   let upstreamPromise = null;
+  let upstreamSettled = false;
   const cachedFailure = await failureState(primaryKey, env);
   if (!cachedFailure && !lrclibData?.instrumental && await claimUpstream(primaryKey, env)) {
-    upstreamPromise = fetchFromUpstream(track, artists, env);
+    upstreamPromise = fetchFromUpstream(track, artists, env).then(result => {
+      upstreamSettled = true;
+      return result;
+    });
   }
   const deezerMeta = await deezerPromise;
   const canonTrack = lrclibData?.trackName || deezerMeta?.track || track;
@@ -226,7 +237,7 @@ export async function buildFromSources(track, artists, album, duration, env, ide
           album: existing?.album || meta.album,
           duration: existing?.duration || isrcIdentity.duration || meta.duration
         },
-        pendingUpstream
+        pendingUpstream, upstreamSettled
       };
     }
   }
@@ -339,6 +350,6 @@ export async function buildFromSources(track, artists, album, duration, env, ide
     instrumental: false,
     combined,
     meta,
-    pendingUpstream
+    pendingUpstream, upstreamSettled
   };
 }
