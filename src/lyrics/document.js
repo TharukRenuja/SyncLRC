@@ -102,7 +102,7 @@ function renderLrc(doc) {
 
 export function renderDocument(rich, format, requested = []) {
   const doc = filtered(rich.ttml, requested);
-  return format === 'ttml' ? new XMLSerializer().serializeToString(doc, { requireWellFormed: true }) : renderLrc(doc);
+  return format === 'ttml' ? new XMLSerializer().serializeToString(doc.documentElement, { requireWellFormed: true }) : renderLrc(doc);
 }
 
 export function decodeDocument(data) {
