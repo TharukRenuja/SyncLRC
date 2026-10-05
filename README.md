@@ -39,7 +39,7 @@ SyncLRC is a **simple, minimalist lyrics finder** designed to help you **discove
     {
       "id": "a1b2c3d4e5f6g7h8...",
       "track": "Song Name",
-      "artist": "Artist Name",
+      "artist": ["Artist Name"],
       "lyrics": {
         "plain": "Lyrics text...",
         "synced": "[00:00.00]...",
@@ -82,7 +82,7 @@ them is enough to match.
 {
   "id": "abc123...",
   "track": "Song Name",
-  "artist": "Artist Name",
+  "artist": ["Artist Name"],
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
@@ -99,7 +99,7 @@ them is enough to match.
 `GET /lyrics/{id}?format=ttml&include=agents,background`
 
 Use these options with either endpoint. Omit them for the default response.
-For LRC, read `{agent:v1}` as the singer ID and parenthesized lines as background
+For LRC, read `{agent:v1}` as the vocal agent ID and parenthesized lines as background
 vocals. TTML carries these roles in its XML.
 
 **Response with Optional Features:**
@@ -108,7 +108,7 @@ vocals. TTML carries these roles in its XML.
 {
   "id": "abc123...",
   "track": "Song Name",
-  "artist": "Artist Name",
+  "artist": ["Artist Name"],
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
@@ -128,6 +128,9 @@ vocals. TTML carries these roles in its XML.
 - `included`: Features present in the returned lyrics.
 - `unavailable`: Requested features absent from the checked results.
 - `unknown`: Requested features that could not be verified because a source failed or timed out.
+
+`artist` is always an array, including solo tracks. Agent IDs distinguish vocal
+parts; they do not identify credited artists.
 
 **Error Responses:**
 
