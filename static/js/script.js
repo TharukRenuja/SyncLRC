@@ -16,6 +16,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const welcomeState = document.getElementById('welcome-state');
     const clearSearchBtn = document.getElementById('clear-search');
 
+    const vocalOptions = document.getElementById('vocal-options');
+    const vocalInputs = vocalOptions.querySelectorAll('input');
+    const vocalStatus = document.getElementById('vocal-status');
+    let toastTimeout;
+    const showVocalStatus = (message, loading = false) => {
+        clearTimeout(toastTimeout);
+        vocalStatus.textContent = message;
+        vocalStatus.hidden = !message;
+        vocalStatus.classList.toggle('loading', loading);
+        if (message && !loading) toastTimeout = setTimeout(() => { vocalStatus.hidden = true; }, 6000);
+    };
+    let currentTrack = null;
+    let vocalLyrics = null;
+    let vocalRequestId = 0;
+
     let searchTimeout;
     let searchRequestId = 0;
     let lyricsRequestId = 0;
@@ -25,6 +40,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let searchResultIndex = -1;
 
     const clearCurrentLyrics = () => {
+        currentTrack = null;
+        vocalLyrics = null;
+        vocalRequestId++;
+        showVocalStatus('');
+        vocalOptions.hidden = true;
         currentRawLyrics = null;
         currentLyricsType = null;
         currentActiveType = 'karaoke';
@@ -61,6 +81,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const query = e.target.value.trim();
         const requestId = ++searchRequestId;
         lyricsRequestId++;
+        vocalRequestId++;
+        currentTrack = null;
         loader.style.display = 'none';
         clearTimeout(searchTimeout);
 
@@ -175,11 +197,13 @@ document.addEventListener('DOMContentLoaded', () => {
             tabs.forEach(t => t.classList.remove('active'));
             document.querySelector(`.tab[data-type="${bestType}"]`)?.classList.add('active');
             
+            currentTrack = { track, artist };
             displayTrackInfo(track, artist, artwork);
             renderLyrics(currentActiveType);
             
             loader.style.display = 'none';
             lyricsView.style.display = 'block';
+            if ([...vocalInputs].some(input => input.checked)) await fetchVocals();
         } catch (err) {
             if (requestId !== lyricsRequestId) return;
             console.error('Lyrics fetch error:', err);
@@ -238,8 +262,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    const fetchVocals = async () => {
+        const selected = [...vocalInputs].filter(input => input.checked).map(input => input.value);
+        const requestId = ++vocalRequestId;
+        vocalLyrics = null;
+        showVocalStatus('');
+        if (!currentTrack || !selected.length) {
+            renderLyrics(currentActiveType);
+            return;
+        }
+        showVocalStatus('Loading vocal features…', true);
+        const params = new URLSearchParams({ ...currentTrack, type: 'karaoke', format: 'lrc', include: selected.join(',') });
+        try {
+            const response = await fetch(`${API_BASE}/lyrics?${params}`);
+            if (!response.ok) throw new Error('Vocal features unavailable');
+            const data = await response.json();
+            if (requestId !== vocalRequestId) return;
+            if (data.type === 'karaoke') vocalLyrics = data.lyrics;
+            const names = { agents: 'Vocal agents', background: 'Background vocals' };
+            const unavailable = data.features?.unavailable || [];
+            const unknown = data.features?.unknown || [];
+            showVocalStatus([
+                unavailable.length ? `${unavailable.map(value => names[value]).join(', ')} unavailable for this track.` : '',
+                unknown.length ? `${unknown.map(value => names[value]).join(', ')} availability not confirmed yet.` : ''
+            ].filter(Boolean).join(' ') || 'Vocal features loaded.');
+            vocalInputs.forEach(input => {
+                if (unavailable.includes(input.value)) input.checked = false;
+            });
+            renderLyrics(currentActiveType);
+        } catch (err) {
+            if (requestId !== vocalRequestId) return;
+            showVocalStatus('Couldn’t load vocal features. Toggle again to retry.');
+            renderLyrics(currentActiveType);
+        }
+    };
+
+    vocalInputs.forEach(input => input.addEventListener('change', fetchVocals));
+
     const renderLyrics = (type) => {
         currentActiveType = type;
+        vocalOptions.hidden = type !== 'karaoke';
 
         if (!currentRawLyrics) {
             lyricsContent.innerHTML = `
@@ -255,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         const typeWeights = { 'karaoke': 3, 'synced': 2, 'plain': 1 };
-        const availableWeight = typeWeights[currentLyricsType] || 0;
+        const availableWeight = type === 'karaoke' && vocalLyrics ? 3 : typeWeights[currentLyricsType] || 0;
         const requestedWeight = typeWeights[type] || 1;
 
         if (requestedWeight > availableWeight) {
@@ -275,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const lyrics = processLyrics(currentRawLyrics, type);
+        const lyrics = processLyrics(type === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, type);
         if (!lyrics) return;
 
         const lineTimestampRegex = /\[\d+:\d{2}[.:]\d+\]/;
@@ -352,7 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     copyButton.addEventListener('click', async () => {
-        const textToCopy = processLyrics(currentRawLyrics, currentActiveType);
+        const textToCopy = processLyrics(currentActiveType === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, currentActiveType);
         try {
             await navigator.clipboard.writeText(textToCopy);
             const originalText = copyButton.innerHTML;
@@ -427,7 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     saveButton.addEventListener('click', () => {
         if (!currentRawLyrics) return;
-        const text = processLyrics(currentRawLyrics, currentActiveType);
+        const text = processLyrics(currentActiveType === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, currentActiveType);
         if (!text) return;
 
         let ext = 'lrc';

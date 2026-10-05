@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SyncLRC — Lyrics Finder</title>
+    <title>SyncLRC: Lyrics Finder</title>
      <link rel="icon" type="image/x-icon" href="static/favicon.ico" />
     <link rel="canonical" href="https://synclrc.dev/" />
     <meta name="description" content="A simple lyrics finder with support for Karaoke (Word-by-Word), Synced (LRC), and Plain lyrics. Search and export lyrics in multiple formats for free." />
@@ -87,7 +87,14 @@
             </div>
           </div>
 
+          <div class="lyrics-box">
+          <div id="vocal-options" class="vocal-options" hidden>
+            <label title="Preserve singer labels when available"><input type="checkbox" role="switch" value="agents"><span class="toggle-icon" aria-hidden="true"></span> Vocal Agents</label>
+            <label title="Include background vocal lines when available"><input type="checkbox" role="switch" value="background"><span class="toggle-icon" aria-hidden="true"></span> Background Vocals</label>
+          </div>
+
           <div id="lyrics-content" class="lyrics-content"></div>
+          </div>
         </div>
 
         <div id="shortcuts-hint" class="shortcuts-hint"></div>
@@ -98,6 +105,8 @@
       </footer>
     </div>
 
+    <div id="vocal-status" class="toast" role="status" aria-live="polite" hidden></div>
+
     <div id="api-modal" class="modal">
       <div class="modal-content">
         <div class="modal-header">
@@ -106,12 +115,12 @@
         </div>
         <div class="modal-body api-modal-body">
           <div class="api-tabs">
-            <button class="api-tab active" data-target="api-search">Search API</button>
-            <button class="api-tab" data-target="api-lyrics">Lyrics API</button>
+            <button class="api-tab active" data-target="api-lyrics">Lyrics API</button>
             <button class="api-tab" data-target="api-by-id">Lyrics By ID</button>
+            <button class="api-tab" data-target="api-search">Search API</button>
           </div>
 
-          <div class="api-section active" id="api-search">
+          <div class="api-section" id="api-search">
             <div class="api-endpoint-header">
               <span class="method get">GET</span>
               <span class="endpoint">api.synclrc.dev</span><span class="path">/search</span>
@@ -147,12 +156,12 @@
             </table>
 
             <h4>Example Response</h4>
-            <pre class="code-block"><code>{
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>{
   "results": [
     {
       "id": "a1b2c3d4e5f6g7h8...",
       "track": "Song Name",
-      "artist": "Artist Name",
+      "artist": ["Artist Name"],
       "album": "Album Name",
       "duration": 215,
       "instrumental": false,
@@ -168,7 +177,7 @@
 }</code></pre>
           </div>
 
-          <div class="api-section" id="api-lyrics">
+          <div class="api-section active" id="api-lyrics">
             <div class="api-endpoint-header">
               <span class="method get">GET</span>
               <span class="endpoint">api.synclrc.dev</span><span class="path">/lyrics</span>
@@ -194,7 +203,7 @@
               <tr>
                 <td><code>artist</code></td>
                 <td>string</td>
-                <td>(Required) Artist name</td>
+                <td>(Required) Artist name. Repeat <code>artist</code> for multiple artists.</td>
               </tr>
             </table>
 
@@ -208,7 +217,7 @@
               <tr>
                 <td><code>type</code></td>
                 <td>string</td>
-                <td>Filter by format: <code>karaoke</code>, <code>synced</code>, or <code>plain</code></td>
+                <td>Request lyric type: <code>karaoke</code>, <code>synced</code>, or <code>plain</code></td>
               </tr>
               <tr>
                 <td><code>album</code></td>
@@ -220,13 +229,23 @@
                 <td>number</td>
                 <td>Track duration in seconds (improves matching)</td>
               </tr>
+              <tr>
+                <td><code>format</code></td>
+                <td>string</td>
+                <td><code>lrc</code> or <code>ttml</code>. Returns a single <code>lyrics</code> field.</td>
+              </tr>
+              <tr>
+                <td><code>include</code></td>
+                <td>string</td>
+                <td><code>agents</code>, <code>background</code>, or <code>agents,background</code>. Use with <code>type=karaoke</code>. Defaults to LRC when <code>format</code> is omitted.</td>
+              </tr>
             </table>
 
             <h4>Example Response</h4>
-            <pre class="code-block"><code>{
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>{
   "id": "a1b2c3d4e5f6g7h8...",
   "track": "Song Name",
-  "artist": "Artist Name",
+  "artist": ["Artist Name"],
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
@@ -234,6 +253,34 @@
   "synced": "[00:00.00]...",
   "plain": "Lyrics..."
 }</code></pre>
+
+            <h4>Optional Features</h4>
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>GET /lyrics?track=Lost&amp;artist=Linkin%20Park&amp;format=lrc&amp;include=agents,background</code></pre>
+
+            <h4>Example Response with Features</h4>
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>{
+  "id": "a1b2c3d4e5f6g7h8...",
+  "track": "Song Name",
+  "artist": ["Artist Name"],
+  "album": "Album Name",
+  "duration": 215,
+  "instrumental": false,
+  "lyrics": "[00:01.00]{agent:v1}&lt;00:01.00&gt;Hello",
+  "type": "karaoke",
+  "format": "lrc",
+  "features": {
+    "requested": ["agents", "background"],
+    "included": ["agents"],
+    "unavailable": ["background"],
+    "unknown": []
+  }
+}</code></pre>
+            <h4>Errors</h4>
+            <pre class="code-block" tabindex="0" aria-label="HTTP error codes"><code>400  Invalid request
+404  No match
+429  Rate limited
+503  Sources unavailable
+504  Upstream timeout</code></pre>
           </div>
 
           <div class="api-section" id="api-by-id">
@@ -262,15 +309,25 @@
               <tr>
                 <td><code>type</code></td>
                 <td>string</td>
-                <td>(Optional) Filter by format: <code>karaoke</code>, <code>synced</code>, or <code>plain</code></td>
+                <td>(Optional) Request lyric type: <code>karaoke</code>, <code>synced</code>, or <code>plain</code></td>
+              </tr>
+              <tr>
+                <td><code>format</code></td>
+                <td>string</td>
+                <td><code>lrc</code> or <code>ttml</code>. Returns a single <code>lyrics</code> field.</td>
+              </tr>
+              <tr>
+                <td><code>include</code></td>
+                <td>string</td>
+                <td><code>agents</code>, <code>background</code>, or <code>agents,background</code>. Use with <code>type=karaoke</code>. Defaults to LRC when <code>format</code> is omitted.</td>
               </tr>
             </table>
 
             <h4>Example Response</h4>
-            <pre class="code-block"><code>{
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>{
   "id": "a1b2c3d4e5f6g7h8...",
   "track": "Song Name",
-  "artist": "Artist Name",
+  "artist": ["Artist Name"],
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
@@ -278,6 +335,34 @@
   "synced": "[00:00.00]...",
   "plain": "Lyrics..."
 }</code></pre>
+
+            <h4>Optional Features</h4>
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>GET /lyrics/{id}?format=ttml&amp;include=agents,background</code></pre>
+
+            <h4>Example Response with Features</h4>
+            <pre class="code-block" tabindex="0" aria-label="API example"><code>{
+  "id": "a1b2c3d4e5f6g7h8...",
+  "track": "Song Name",
+  "artist": ["Artist Name"],
+  "album": "Album Name",
+  "duration": 215,
+  "instrumental": false,
+  "lyrics": "&lt;tt xmlns=\"http://www.w3.org/ns/ttml\"&gt;...&lt;/tt&gt;",
+  "type": "karaoke",
+  "format": "ttml",
+  "features": {
+    "requested": ["agents", "background"],
+    "included": ["agents"],
+    "unavailable": ["background"],
+    "unknown": []
+  }
+}</code></pre>
+            <h4>Errors</h4>
+            <pre class="code-block" tabindex="0" aria-label="HTTP error codes"><code>400  Invalid request
+404  No match
+429  Rate limited
+503  Sources unavailable
+504  Upstream timeout</code></pre>
           </div>
 
         </div>
