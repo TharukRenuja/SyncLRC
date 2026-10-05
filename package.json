@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "d1:create": "wrangler d1 create synclrc-oss-d1",
-    "d1:apply": "wrangler d1 execute synclrc-oss-d1 --file=src/schema.sql",
-    "d1:migrate": "wrangler d1 execute synclrc-oss-d1 --remote --file=migrations/migration.sql"
+    "d1:create": "wrangler d1 create synclrc-d1",
+    "d1:apply": "wrangler d1 execute synclrc-d1 --file=src/schema.sql",
+    "d1:migrate": "wrangler d1 execute synclrc-d1 --remote --file=migrations/migration.sql"
   },
   "dependencies": {
     "@xmldom/xmldom": "0.9.12"
