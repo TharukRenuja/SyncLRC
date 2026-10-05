@@ -24,13 +24,13 @@ export function errorResponse(msg, status = 400) {
   }, status, status >= 400 ? 'public, max-age=300' : 'no-cache');
 }
 
-export function buildResponse(combined, reqType, id, track, artist, meta, { pending = false, options = null } = {}) {
+export function buildResponse(combined, reqType, id, track, artist, meta, { pending = false, karaokePending = false, options = null } = {}) {
   artist = artistArray(combined.artists || artist);
   const base = { album: meta?.album ?? null, duration: meta?.duration ?? null, instrumental: !!meta?.instrumental };
   // Pending responses use a short cache so clients can see the later karaoke upgrade.
   const cacheControl = options?.hasInclude && featureDue(combined, options.requested) ? 'no-store' :
     pending || (options?.hasInclude && combined.rich?.unknown?.length) ? 'public, max-age=60' : 'public, max-age=86400';
-  const headers = pending ? { 'Synclrc-Pending': 'karaoke' } : {};
+  const headers = karaokePending && !combined.karaoke && !meta?.instrumental ? { 'Synclrc-Pending': 'karaoke' } : {};
 
   if (combined.karaoke) {
     const [synced] = convertLyrics(combined.karaoke, 'karaoke', 'synced');
