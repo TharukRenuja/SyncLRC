@@ -1,4 +1,4 @@
-import { artistArray, featureDue } from '../lyrics/document.js';
+import { featureDue } from '../lyrics/document.js';
 import { buildCombined, convertLyrics } from '../lyrics/format.js';
 import { lookupKeys, stripSearchArtistPrefix, unique } from '../lyrics/normalize.js';
 import { lyricOptions } from '../lyrics/options.js';
@@ -36,7 +36,7 @@ export async function handleLyricsRequest(id, url, env, ctx) {
 
 export async function handleGetLyrics(id, url, env, ctx, options = null) {
   const respond = async (combined, type, id, track, artist, meta, state = {}) => {
-    const keys = unique([...lookupKeys(track, combined.artists || [artist]),
+    const keys = unique([...lookupKeys(track, [artist]),
       ...lookupKeys(url.searchParams.get('track') || track, url.searchParams.getAll('artist'))]);
     const active = !state.upstreamSettled && !combined.karaoke && !meta?.instrumental && (await Promise.all(keys.map(async key =>
       await getFlag(key, 'inflight', env) && !(await failureState(key, env)) &&
@@ -73,7 +73,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
     }
 
     let combined = row ? await combinedForRow(row, env) : { karaoke: null, synced: null, plain: null };
-    if (row) combined = await refresh(row, combined, combined.artists || [row.artist]);
+    if (row) combined = await refresh(row, combined, [row.artist]);
     if (combined.karaoke || combined.synced || combined.plain) {
       const trackName = stripSearchArtistPrefix(row.name, row.artist);
       const meta = { album: row.album, duration: row.duration, instrumental: !!row.instrumental };
@@ -119,7 +119,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
         { album: row.album, duration: row.duration, instrumental: true });
     }
     let combined = await combinedForRow(row, env);
-    combined = await refresh(row, combined, combined.artists || [row.artist]);
+    combined = await refresh(row, combined, [row.artist]);
     if (combined.karaoke || combined.synced || combined.plain) {
       const trackName = stripSearchArtistPrefix(row.name, row.artist);
       const meta = { album: row.album, duration: row.duration, instrumental: !!row.instrumental };
@@ -194,7 +194,6 @@ export async function buildFromSources(track, artists, album, duration, env, ide
     isrc: deezerMeta?.isrc || identity.isrc || null,
     album: lrclibData?.albumName || deezerMeta?.album || album || null,
     duration: lrclibData?.duration || deezerMeta?.duration || (duration ? Number(duration) : null),
-    artists: artistArray(lrclibData?.artistName || deezerMeta?.artist || artists, artists),
     instrumental: !!lrclibData?.instrumental
   };
 

@@ -1,5 +1,5 @@
 import { upstreamTimeoutMs } from './config.js';
-import { artistArray, featureDue } from './lyrics/document.js';
+import { featureDue } from './lyrics/document.js';
 import { buildCombined } from './lyrics/format.js';
 import { lookupKeys, stripSearchArtistPrefix } from './lyrics/normalize.js';
 import { fetchFromUpstream } from './sources/upstream.js';
@@ -8,7 +8,7 @@ import { missTtl, claimUpstream, clearFlag, failureState, getFlag, rememberFailu
 import { lookupById, lookupByKeys, lookupByName } from './storage/metadata.js';
 
 export async function recheckTrack(track, artists, env, targetId = null, deadline = Infinity) {
-  artists = artistArray(artists);
+  artists = (Array.isArray(artists) ? artists : [artists]).filter(value => typeof value === 'string' && value.trim());
   if (!artists.length) return;
   const keys = lookupKeys(track, artists);
   const primaryKey = keys[0];
@@ -25,7 +25,7 @@ export async function recheckTrack(track, artists, env, targetId = null, deadlin
     await rememberFailure(primaryKey, result, env);
     if (result.status === 'ok') {
       const stored = await storeCombined(name, row?.artist || artists[0], { ...buildCombined(null, result.lyrics), rich: result.rich },
-        { ...row, id: row?.id, artists: combined?.artists || artists, instrumental: false }, env, keys);
+        { ...row, id: row?.id, instrumental: false }, env, keys);
       if (stored.rejected) {
         result = { status: 'retry', httpStatus: 503 };
         await rememberFailure(primaryKey, result, env);

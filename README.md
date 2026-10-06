@@ -42,7 +42,7 @@ SyncLRC is a **simple, minimalist lyrics finder** for discovering and exporting 
     {
       "id": "abc123...",
       "track": "Song Name",
-      "artist": ["Artist Name"],
+      "artist": "Artist Name",
       "lyrics": {
         "plain": "Lyrics text...",
         "synced": "[00:00.00]...",
@@ -81,7 +81,7 @@ For collaborations, repeat `artist` for each artist:
 - `include`: (Optional) Comma-separated `agents` and/or `background`. Use with `type=karaoke` or omit `type`.
 
 Omit `type`, `format`, and `include` for the default response below. Missing lyric
-variants are `null`. `artist` is always an array, including solo tracks.
+variants are `null`. `artist` is a string containing the artist credit.
 
 **Default Response:**
 
@@ -89,7 +89,7 @@ variants are `null`. `artist` is always an array, including solo tracks.
 {
   "id": "abc123...",
   "track": "Song Name",
-  "artist": ["Artist Name"],
+  "artist": "Artist Name",
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
@@ -110,7 +110,7 @@ Check the returned `type` before displaying them.
 {
   "id": "abc123...",
   "track": "Song Name",
-  "artist": ["Artist Name"],
+  "artist": "Artist Name",
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,

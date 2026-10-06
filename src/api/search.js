@@ -1,4 +1,3 @@
-import { artistArray } from '../lyrics/document.js';
 import { generateHash, lookupKeys, searchAltId, stripSearchArtistPrefix, unique } from '../lyrics/normalize.js';
 import { prefetchSearchKaraoke } from '../refresh.js';
 import { searchLrcLib } from '../sources/lrclib.js';
@@ -50,7 +49,6 @@ export async function handleSearch(request, url, env, ctx) {
 
   // Resolve known identities from D1 and load any cached karaoke bodies from R2.
   const karaokeById = new Map();
-  const artistsById = new Map();
   const karaokeAvailable = new Set();
   const knownByKey = new Map();
   if (picks.length) {
@@ -83,7 +81,6 @@ export async function handleSearch(request, url, env, ctx) {
     const bodies = await Promise.all(idsToRead.map(async id => [id, await readCombined(id, env)]));
     for (const [id, body] of bodies) {
       if (body?.karaoke) karaokeById.set(id, body.karaoke);
-      if (body?.artists) artistsById.set(id, body.artists);
     }
   }
 
@@ -93,7 +90,7 @@ export async function handleSearch(request, url, env, ctx) {
     return {
       id,
       track: pick.track,
-      artist: artistArray(artistsById.get(id) || pick.artist),
+      artist: pick.artist,
       album: pick.album,
       duration: pick.duration,
       instrumental: false,

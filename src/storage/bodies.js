@@ -1,4 +1,4 @@
-import { applyDocument, artistArray, nextFeatureCheck } from '../lyrics/document.js';
+import { applyDocument, nextFeatureCheck } from '../lyrics/document.js';
 import { lyricsAgree } from '../lyrics/match.js';
 import { convertLyrics } from '../lyrics/format.js';
 import { generateHash, lookupKeys, normalizeIsrc, unique } from '../lyrics/normalize.js';
@@ -77,7 +77,6 @@ export async function storeCombined(track, artist, combined, meta, env, keys = [
   if (rejected) combined = { plain: reference, synced: oldCombined.synced };
   let merged = {
     ...oldCombined,
-    artists: oldCombined.artists || meta?.artists || artistArray(artist),
     karaoke: combined.karaoke || oldCombined.karaoke || null,
     synced: combined.synced || oldCombined.synced || null,
     plain: oldCombined.plain || combined.plain || null

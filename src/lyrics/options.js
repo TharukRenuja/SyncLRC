@@ -14,7 +14,7 @@ export function lyricOptions(url) {
   }
   const type = url.searchParams.get('type');
   if (hasInclude && type && type !== 'karaoke') throw new Error('Vocal features require type=karaoke or an omitted type.');
-  return { format, requested, hasInclude, artists: url.searchParams.getAll('artist').map(value => value.trim()).filter(Boolean) };
+  return { format, requested, hasInclude };
 }
 
 export function lrcToTtml(lyrics) {

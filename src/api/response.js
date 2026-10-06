@@ -1,4 +1,4 @@
-import { artistArray, featureDue } from '../lyrics/document.js';
+import { featureDue } from '../lyrics/document.js';
 import { convertLyrics, pickType } from '../lyrics/format.js';
 import { renderOptions } from '../lyrics/options.js';
 import { sanitizeLyrics } from '../lyrics/sanitize.js';
@@ -25,7 +25,6 @@ export function errorResponse(msg, status = 400) {
 }
 
 export function buildResponse(combined, reqType, id, track, artist, meta, { pending = false, karaokePending = false, options = null } = {}) {
-  artist = artistArray(combined.artists || artist);
   const base = { album: meta?.album ?? null, duration: meta?.duration ?? null, instrumental: !!meta?.instrumental };
   // Pending responses use a short cache so clients can see the later karaoke upgrade.
   const cacheControl = options?.hasInclude && featureDue(combined, options.requested) ? 'no-store' :

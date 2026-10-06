@@ -9,18 +9,6 @@ const elements = node => Array.from(node.getElementsByTagName('*'));
 const roles = node => (node.getAttributeNS(META, 'role') || '').split(/\s+/).map(value => ROLES[value]).filter(Boolean);
 const role = node => roles(node)[0];
 
-export function artistArray(value, known = []) {
-  if (Array.isArray(value)) return [...new Set(value.filter(item => typeof item === 'string').map(item => item.trim()).filter(Boolean))];
-  if (typeof value !== 'string' || !value.trim()) return [];
-  const credit = value.trim();
-  // Split a combined credit only when every piece is an explicitly known name.
-  if (!known.some(name => name.toLowerCase() === credit.toLowerCase())) {
-    const parts = credit.split(/\s+(?:&|feat\.?|ft\.?|featuring)\s+|,\s+/i);
-    if (parts.length > 1 && parts.every(part => known.some(name => name.toLowerCase() === part.trim().toLowerCase()))) return artistArray(parts);
-  }
-  return [credit];
-}
-
 function parse(xml) {
   if (typeof xml !== 'string' || /<!DOCTYPE/i.test(xml)) throw new Error('Invalid TTML');
   const doc = new DOMParser({ onError: (_level, message) => { throw new Error(message); } }).parseFromString(xml, 'application/xml');
