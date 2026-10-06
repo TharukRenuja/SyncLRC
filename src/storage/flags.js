@@ -1,8 +1,8 @@
-export const UPSTREAM_FAILURE_TTL = 120;
+export const upstreamFailureTtl = 120;
 
-export const UPSTREAM_COOLDOWN_TTL = 60;
+export const upstreamCooldownTtl = 60;
 
-export const NEG_TTL_UPSTREAM = 3600;
+export const missTtl = 3600;
 
 export async function getFlag(key, kind, env) {
   const row = await env.D1_DB.prepare(
@@ -37,13 +37,13 @@ export async function rememberFailure(key, result, env) {
     await clearFlag(key, 'failure503', env);
     await clearFlag(key, 'failure504', env);
   } else if (result.status !== 'miss' && result.status !== 'skipped') {
-    await setFlag(key, `failure${result.httpStatus === 504 ? 504 : 503}`, UPSTREAM_FAILURE_TTL, env);
+    await setFlag(key, `failure${result.httpStatus === 504 ? 504 : 503}`, upstreamFailureTtl, env);
   }
 }
 
 export async function claimUpstream(key, env) {
   const now = Date.now();
-  const fresh = now + UPSTREAM_COOLDOWN_TTL * 1000;
+  const fresh = now + upstreamCooldownTtl * 1000;
   const res = await env.D1_DB.prepare(
     `INSERT INTO flags (key, kind, expires_at) VALUES (?, ?, ?)
      ON CONFLICT(key, kind) DO UPDATE SET expires_at = excluded.expires_at

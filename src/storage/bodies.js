@@ -6,7 +6,7 @@ import { sanitizeLyrics } from '../lyrics/sanitize.js';
 import { setFlag } from './flags.js';
 import { lookupById, lookupIdentityByIsrc, lookupLegacyById } from './metadata.js';
 
-export const RETENTION_DAYS = 1;
+export const retentionDays = 1;
 
 export async function recordFeatureAttempt(row, result, env) {
   if (!row) return;
@@ -159,7 +159,7 @@ export async function storeSearchHits(hits, env) {
 }
 
 export async function purgeExpired(env) {
-  const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
   const expiredRows = await env.D1_DB.prepare(
     'SELECT id FROM tracks WHERE fetched_at IS NULL OR fetched_at < ?'

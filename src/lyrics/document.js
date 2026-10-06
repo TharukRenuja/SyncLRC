@@ -1,8 +1,8 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
-export const VOCAL_FEATURES = ['agents', 'background'];
-export const FEATURE_REFRESH_MS = 24 * 60 * 60 * 1000;
-export const FEATURE_RETRY_MS = 5 * 60 * 1000;
+export const vocalFeatures = ['agents', 'background'];
+export const featureRefreshMs = 24 * 60 * 60 * 1000;
+export const featureRetryMs = 5 * 60 * 1000;
 const META = 'http://www.w3.org/ns/ttml#metadata';
 const ROLES = { 'x-bg': 'background', 'x-translation': 'translation', 'x-roman': 'romanization', 'x-transliteration': 'romanization' };
 const elements = node => Array.from(node.getElementsByTagName('*'));
@@ -110,14 +110,14 @@ export function decodeDocument(data) {
   if (data?.format !== 'ttml') {
     const lyrics = data?.lyrics ?? data?.karaoke;
     if (typeof lyrics !== 'string' || !/<\d+:\d{2}[.:]\d+>/.test(lyrics)) throw new Error('Invalid lyric response');
-    return { lyrics, rich: { ttml: null, checkedAt, included: [], unavailable: [], unknown: VOCAL_FEATURES } };
+    return { lyrics, rich: { ttml: null, checkedAt, included: [], unavailable: [], unknown: vocalFeatures } };
   }
   const doc = parse(data.lyrics);
   if (!elements(doc).some(node => node.localName === 'span' && clock(node.getAttribute('begin')))) throw new Error('TTML is not word-timed');
-  const included = VOCAL_FEATURES.filter(feature => elements(doc).some(node => feature === 'agents' ? node.hasAttributeNS(META, 'agent') : role(node) === feature));
-  const unavailable = VOCAL_FEATURES.filter(feature => !included.includes(feature) && data.features?.unavailable?.includes(feature));
+  const included = vocalFeatures.filter(feature => elements(doc).some(node => feature === 'agents' ? node.hasAttributeNS(META, 'agent') : role(node) === feature));
+  const unavailable = vocalFeatures.filter(feature => !included.includes(feature) && data.features?.unavailable?.includes(feature));
   const rich = { ttml: data.lyrics, provider: data.provider || null, checkedAt, included, unavailable,
-    unknown: VOCAL_FEATURES.filter(feature => !included.includes(feature) && !unavailable.includes(feature)) };
+    unknown: vocalFeatures.filter(feature => !included.includes(feature) && !unavailable.includes(feature)) };
   const lyrics = renderDocument(rich, 'lrc');
   if (!/<\d+:\d{2}[.:]\d+>/.test(lyrics)) throw new Error('TTML lacks usable lead lyrics');
   return { lyrics, rich };
@@ -127,7 +127,7 @@ export function mergeRich(previous, next) {
   if (!next) return previous;
   if (!previous?.ttml || previous.included.every(feature => next.included.includes(feature))) return next;
   // Keep a richer document rather than combining mismatched providers' timing.
-  const missing = VOCAL_FEATURES.filter(feature => !previous.included.includes(feature));
+  const missing = vocalFeatures.filter(feature => !previous.included.includes(feature));
   return { ...previous, checkedAt: next.checkedAt,
     unavailable: missing.filter(feature => next.unavailable.includes(feature)),
     unknown: missing.filter(feature => !next.unavailable.includes(feature)) };
@@ -139,11 +139,11 @@ export function applyDocument(combined, rich) {
   return { ...combined, rich: merged, karaoke: merged.ttml ? renderDocument(merged, 'lrc') : combined.karaoke };
 }
 
-export function featureDue(combined, requested = VOCAL_FEATURES, now = Date.now()) {
+export function featureDue(combined, requested = vocalFeatures, now = Date.now()) {
   if (!combined.rich) return true;
   const missing = requested.filter(feature => !combined.rich.included.includes(feature));
   if (!missing.length) return false;
-  const interval = missing.some(feature => combined.rich.unknown.includes(feature)) ? FEATURE_RETRY_MS : FEATURE_REFRESH_MS;
+  const interval = missing.some(feature => combined.rich.unknown.includes(feature)) ? featureRetryMs : featureRefreshMs;
   return now >= combined.rich.checkedAt + interval;
 }
 
@@ -155,6 +155,6 @@ export function featureStatus(combined, requested, instrumental = false) {
 }
 
 export function nextFeatureCheck(rich) {
-  if (rich.included.length === VOCAL_FEATURES.length) return Date.now() + 100 * 365 * FEATURE_REFRESH_MS;
-  return rich.checkedAt + (rich.unknown.length ? FEATURE_RETRY_MS : FEATURE_REFRESH_MS);
+  if (rich.included.length === vocalFeatures.length) return Date.now() + 100 * 365 * featureRefreshMs;
+  return rich.checkedAt + (rich.unknown.length ? featureRetryMs : featureRefreshMs);
 }

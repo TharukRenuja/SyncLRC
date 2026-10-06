@@ -1,10 +1,10 @@
-import { UPSTREAM_TIMEOUT_MS } from './config.js';
+import { upstreamTimeoutMs } from './config.js';
 import { artistArray, featureDue } from './lyrics/document.js';
 import { buildCombined } from './lyrics/format.js';
 import { lookupKeys, stripSearchArtistPrefix } from './lyrics/normalize.js';
 import { fetchFromUpstream } from './sources/upstream.js';
 import { combinedForRow, purgeExpired, recordFeatureAttempt, storeCombined } from './storage/bodies.js';
-import { NEG_TTL_UPSTREAM, claimUpstream, clearFlag, failureState, getFlag, rememberFailure, setFlag } from './storage/flags.js';
+import { missTtl, claimUpstream, clearFlag, failureState, getFlag, rememberFailure, setFlag } from './storage/flags.js';
 import { lookupById, lookupByKeys, lookupByName } from './storage/metadata.js';
 
 export async function recheckTrack(track, artists, env, targetId = null, deadline = Infinity) {
@@ -17,7 +17,7 @@ export async function recheckTrack(track, artists, env, targetId = null, deadlin
   const combined = row && await combinedForRow(row, env);
   if (row?.instrumental || (combined?.karaoke && !featureDue(combined))) return;
   if (await failureState(primaryKey, env) || await getFlag(primaryKey, 'karaoke-miss', env)) return;
-  const timeoutMs = Math.min(UPSTREAM_TIMEOUT_MS, deadline - Date.now() - 2000);
+  const timeoutMs = Math.min(upstreamTimeoutMs, deadline - Date.now() - 2000);
   if (timeoutMs <= 0 || !(await claimUpstream(primaryKey, env))) return;
   try {
     const name = stripSearchArtistPrefix(row?.name || track, row?.artist || artists[0]);
@@ -32,7 +32,7 @@ export async function recheckTrack(track, artists, env, targetId = null, deadlin
         await recordFeatureAttempt(row, result, env);
       } else await clearFlag(primaryKey, 'miss', env);
     } else {
-      if (result.status === 'miss') await setFlag(primaryKey, 'karaoke-miss', NEG_TTL_UPSTREAM, env);
+      if (result.status === 'miss') await setFlag(primaryKey, 'karaoke-miss', missTtl, env);
       await recordFeatureAttempt(row, result, env);
     }
   } finally { await clearFlag(primaryKey, 'inflight', env); }

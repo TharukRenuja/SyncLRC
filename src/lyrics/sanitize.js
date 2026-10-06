@@ -1,4 +1,4 @@
-export const CREDIT_PATTERNS = [
+export const creditPatterns = [
   // English - require colon/dash after keyword (credit format)
   /^[ \t]*(lyrics?|composed|arranged|produced|mixed|mastered|written|performed|vocals?|music|recorded|engineered|published|engineering)[ \t]+(by|at)[ \t]*[:：-]/i,
   /^[ \t]*co-produced[ \t]+(by|at)[ \t]*[:：-]/i,
@@ -112,6 +112,6 @@ export function sanitizeLyrics(lyrics) {
   return lyrics.split('\n').filter(line => {
     const text = line.replace(/\[\d+:\d{2}[.:]\d+\]/g, '').replace(/<\d+:\d{2}[.:]\d+>/g, '');
     const cleaned = normalizeWhitespace(text);
-    return cleaned && !CREDIT_PATTERNS.some(p => p.test(cleaned));
+    return cleaned && !creditPatterns.some(p => p.test(cleaned));
   }).map(line => normalizeWhitespace(line)).join('\n');
 }

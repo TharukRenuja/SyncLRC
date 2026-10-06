@@ -1,4 +1,4 @@
-import { UA, UPSTREAM_TIMEOUT_MS } from '../config.js';
+import { UA, upstreamTimeoutMs } from '../config.js';
 import { isRelevant } from '../lyrics/match.js';
 import { normalizeIsrc } from '../lyrics/normalize.js';
 
@@ -10,7 +10,7 @@ export async function fetchDeezerMeta(track, artists, albumName, duration) {
     const url = `https://api.deezer.com/search/track?q=${encodeURIComponent(query)}&limit=5`;
     let data;
     try {
-      const resp = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+      const resp = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(upstreamTimeoutMs) });
       if (resp.status !== 200) continue;
       data = await resp.json();
     } catch {
@@ -26,7 +26,7 @@ export async function fetchDeezerMeta(track, artists, albumName, duration) {
       let full = item;
       if (!full?.isrc && item?.id) {
         try {
-          const resp = await fetch(`https://api.deezer.com/track/${item.id}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+          const resp = await fetch(`https://api.deezer.com/track/${item.id}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(upstreamTimeoutMs) });
           if (resp.status === 200) full = await resp.json();
         } catch {
         }

@@ -1,7 +1,7 @@
-import { UPSTREAM_TIMEOUT_MS } from '../config.js';
+import { upstreamTimeoutMs } from '../config.js';
 import { decodeDocument } from '../lyrics/document.js';
 
-export async function fetchFromUpstream(track, artists, env, timeoutMs = UPSTREAM_TIMEOUT_MS) {
+export async function fetchFromUpstream(track, artists, env, timeoutMs = upstreamTimeoutMs) {
   const params = new URLSearchParams({ track, format: 'ttml', include: 'agents,background' });
   for (const artist of artists) params.append('artist', artist);
   const url = `${env.UPSTREAM_URL}/lyrics?${params}`;

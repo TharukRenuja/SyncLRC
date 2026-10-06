@@ -6,7 +6,7 @@ import { readCombined, storeSearchHits } from '../storage/bodies.js';
 import { persistSearchMetadata } from '../storage/metadata.js';
 import { errorResponse, jsonResponse } from './response.js';
 
-export const SEARCH_BACKGROUND_BUDGET_MS = 25000;
+export const searchBackgroundBudgetMs = 25000;
 
 export async function handleSearch(request, url, env, ctx) {
   const query = url.searchParams.get('q')?.trim() || '';
@@ -115,7 +115,7 @@ export async function handleSearch(request, url, env, ctx) {
       synced: pick.synced, keys }];
   });
   if (finalResults.length) {
-    const deadline = Date.now() + SEARCH_BACKGROUND_BUDGET_MS;
+    const deadline = Date.now() + searchBackgroundBudgetMs;
     ctx.waitUntil((async () => {
       if (searchHits.length) {
         await persistSearchMetadata(searchHits, env);

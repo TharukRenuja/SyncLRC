@@ -8,11 +8,21 @@ import { fetchDeezerMeta } from '../sources/deezer.js';
 import { fetchFromLrcLib } from '../sources/lrclib.js';
 import { fetchFromUpstream } from '../sources/upstream.js';
 import { combinedForRow, readCombined, recordFeatureAttempt, storeCombined } from '../storage/bodies.js';
-import { NEG_TTL_UPSTREAM, claimUpstream, clearFlag, failureState, getFlag, rememberFailure, setFlag } from '../storage/flags.js';
+import { missTtl, claimUpstream, clearFlag, failureState, getFlag, rememberFailure, setFlag } from '../storage/flags.js';
 import { lookupById, lookupIdentityByIsrc, lookupRequestMetadata, rememberKeys } from '../storage/metadata.js';
 import { buildResponse, errorResponse, sourceFailureResponse } from './response.js';
 
-export const UPSTREAM_INLINE_BUDGET_MS = 2000;
+export const inlineBudget = 2000;
+
+// Keep feature refreshes within the same inline budget as karaoke upgrades.
+async function withinBudget(task, fallback) {
+  let timer;
+  try {
+    return await Promise.race([task, new Promise(resolve => {
+      timer = setTimeout(() => resolve(fallback), inlineBudget);
+    })]);
+  } finally { clearTimeout(timer); }
+}
 
 export async function handleLyricsRequest(id, url, env, ctx) {
   let options;
@@ -38,8 +48,9 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
     if (row.instrumental || !(combined.karaoke || combined.synced || combined.plain) || !featureDue(combined)) return combined;
     const task = recheckTrack(row.name, artists, env, row.id).catch(() => {});
     if (options?.hasInclude && featureDue(combined, options.requested)) {
-      await task;
-      return await readCombined(row.id, env) || combined;
+      ctx.waitUntil(task);
+      if (await withinBudget(task.then(() => true), false)) return await readCombined(row.id, env) || combined;
+      return combined;
     }
     ctx.waitUntil(task);
     return combined;
@@ -224,8 +235,9 @@ export async function buildFromSources(track, artists, album, duration, env, ide
           }
         })();
         if (identity.options?.hasInclude && featureDue(existingCombined, identity.options.requested)) {
-          await settle;
-          Object.assign(existingCombined, await readCombined(isrcIdentity.id, env));
+          identity.ctx.waitUntil(settle);
+          if (await withinBudget(settle.then(() => true), false)) Object.assign(existingCombined, await readCombined(isrcIdentity.id, env));
+          else if (!existing?.instrumental && !existingCombined.karaoke) pendingUpstream = settle;
         } else {
           identity.ctx.waitUntil(settle);
           if (!existing?.instrumental && !existingCombined.karaoke) pendingUpstream = settle;
@@ -266,10 +278,10 @@ export async function buildFromSources(track, artists, album, duration, env, ide
   let timedOut = false;
   let upstream = cachedFailure || { status: 'skipped' };
   if (upstreamPromise) {
-    if (haveLrc && !identity.options?.hasInclude) {
+    if (haveLrc) {
       let timer;
       const budget = new Promise(resolve => {
-        timer = setTimeout(() => { timedOut = true; resolve({ status: 'retry' }); }, UPSTREAM_INLINE_BUDGET_MS);
+        timer = setTimeout(() => { timedOut = true; resolve({ status: 'retry' }); }, inlineBudget);
       });
       try {
         upstream = await Promise.race([upstreamPromise, budget]);
@@ -289,7 +301,7 @@ export async function buildFromSources(track, artists, album, duration, env, ide
   if (!combined.karaoke && !combined.synced && !combined.plain) {
     // Only 404 is a cacheable miss; 504 may succeed later.
     const confirmedMiss = upstream.status === 'miss' && !lrclibData?.sourceFailed;
-    if (confirmedMiss) await setFlag(primaryKey, 'miss', NEG_TTL_UPSTREAM, env);
+    if (confirmedMiss) await setFlag(primaryKey, 'miss', missTtl, env);
     // Back off on failure to avoid immediate retries.
     if (upstreamPromise && upstream.status !== 'ok') {
       await rememberFailure(primaryKey, upstream, env);
@@ -349,11 +361,6 @@ export async function buildFromSources(track, artists, album, duration, env, ide
     })();
   }
 
-  if (pendingUpstream && identity.options?.hasInclude) {
-    await pendingUpstream;
-    Object.assign(combined, await readCombined(id, env));
-    pendingUpstream = null;
-  }
 
   return {
     id,

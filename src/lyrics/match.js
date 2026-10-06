@@ -39,10 +39,10 @@ function cjkScore(query, cand) {
   return Math.floor(100 * shared / q.size);
 }
 
-const LEADING_ARTICLE = /^(?:the|a|an)\s+/;
+const leadingArticle = /^(?:the|a|an)\s+/;
 
 function stripArticle(text) {
-  return text.replace(LEADING_ARTICLE, '');
+  return text.replace(leadingArticle, '');
 }
 
 // Reverse coverage: every query token must appear, and a candidate padded with
@@ -72,12 +72,12 @@ function fieldScore(query, cand) {
   return 0;
 }
 
-const ARTIST_SEPARATORS = /\s*(?:,|&|\+|\/|·|、|×)\s*/g;
-const ARTIST_FEATURE = /\s*\b(?:feat|ft|featuring|with)\b\.?\s*/gi;
-const ARTIST_PAREN_FEATURE = /\((?:feat|ft|featuring|with)\b([^)]*)\)/gi;
+const artistSeparators = /\s*(?:,|&|\+|\/|·|、|×)\s*/g;
+const artistFeature = /\s*\b(?:feat|ft|featuring|with)\b\.?\s*/gi;
+const artistParenFeature = /\((?:feat|ft|featuring|with)\b([^)]*)\)/gi;
 // "Tyler, The Creator" is one name, so a separator followed by an article is
 // protected before splitting and restored afterwards.
-const ARTIST_ARTICLE_SEP = /[,/]\s+(?=(?:the|a|an)\s)/gi;
+const artistArticleSep = /[,/]\s+(?=(?:the|a|an)\s)/gi;
 const SENTINEL = '\ue000';
 
 // Accepts an array (one entry per `artist` param) or a single joined string.
@@ -85,10 +85,10 @@ export function splitArtists(value) {
   const parts = Array.isArray(value) ? value : [value];
   const names = [];
   for (const part of parts) {
-    let text = String(part).replace(ARTIST_PAREN_FEATURE, ', $1');
-    text = text.replace(ARTIST_ARTICLE_SEP, SENTINEL);
-    for (const chunk of text.split(ARTIST_SEPARATORS)) {
-      for (const name of chunk.split(ARTIST_FEATURE)) {
+    let text = String(part).replace(artistParenFeature, ', $1');
+    text = text.replace(artistArticleSep, SENTINEL);
+    for (const chunk of text.split(artistSeparators)) {
+      for (const name of chunk.split(artistFeature)) {
         const clean = name.replace(/[ .,]+$/, '').replace(/^[ .,]+/, '');
         if (clean) names.push(clean.replaceAll(SENTINEL, ', ').replace(/^[ ,]+|[ ,]+$/g, ''));
       }
@@ -109,7 +109,7 @@ function jaccard(query, cand) {
   return Math.floor(100 * shared / (q.size + c.size - shared));
 }
 
-const STYLISED_MIN = 70;
+const stylisedMin = 70;
 
 function matchOneArtist(name, candArtist) {
   const q = stripArticle(normText(name));
@@ -136,7 +136,7 @@ function matchOneArtist(name, candArtist) {
     const candNorm = stripArticle(normText(candName));
     if (!candNorm) continue;
     const score = jaccard(q, candNorm);
-    if (score >= STYLISED_MIN && score > best) best = score;
+    if (score >= stylisedMin && score > best) best = score;
   }
   return best;
 }
