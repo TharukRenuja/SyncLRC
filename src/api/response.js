@@ -16,12 +16,18 @@ export function jsonResponse(data, status = 200, cacheControl = 'no-cache', extr
 }
 
 export function errorResponse(msg, status = 400) {
-  const error = status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST';
-  return jsonResponse({
-    success: false,
-    error,
-    message: msg
-  }, status, status >= 400 ? 'public, max-age=300' : 'no-cache');
+  const codes = { 400: 'BAD_REQUEST', 404: 'NOT_FOUND', 500: 'INTERNAL_ERROR',
+    503: 'SOURCES_UNAVAILABLE', 504: 'UPSTREAM_TIMEOUT' };
+  return jsonResponse({ success: false, error: codes[status] || 'INTERNAL_ERROR', message: msg },
+    status, status >= 500 ? 'no-store' : 'public, max-age=300');
+}
+
+export function sourceFailureResponse(status, httpStatus = 503, retryAfter = 5) {
+  if (status === 'miss') return errorResponse('No matching song found for this track/artist.', 404);
+  return jsonResponse({ success: false,
+    error: httpStatus === 504 ? 'UPSTREAM_TIMEOUT' : 'SOURCES_UNAVAILABLE',
+    message: 'Lyrics sources are temporarily unavailable; retry shortly.' }, httpStatus, 'no-store',
+    { 'Retry-After': String(retryAfter || 5) });
 }
 
 export function buildResponse(combined, reqType, id, track, artist, meta, { pending = false, karaokePending = false, options = null } = {}) {
@@ -63,14 +69,4 @@ export function buildResponse(combined, reqType, id, track, artist, meta, { pend
     synced: combined.synced || null,
     plain: combined.plain || null
   }, 200, cacheControl, headers);
-}
-
-
-// Legacy reads are opt-in after migration.
-
-export function sourceFailureResponse(status, httpStatus = 503, retryAfter = 5) {
-  if (status === 'miss') return errorResponse('Lyrics not found', 404);
-  return jsonResponse({ error: httpStatus === 504 ? 'Lyrics sources took too long to respond.' : status === 'skipped' ? 'Lyrics fetch in progress; retry shortly.' :
-    'Lyrics sources temporarily unavailable; retry shortly.' }, httpStatus, 'no-store',
-    { 'Retry-After': String(retryAfter || 5) });
 }

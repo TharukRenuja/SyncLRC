@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { handleGetLyrics } from '../src/api/lyrics.js';
+import { handleGetLyrics, handleLyricsRequest } from '../src/api/lyrics.js';
 import { startMetadata, enrichMetadata } from '../src/sources/deezer.js';
 import { renderDocument } from '../src/lyrics/document.js';
 import { lrcToTtml } from '../src/lyrics/options.js';
@@ -213,6 +213,63 @@ try {
       assert(!records.has('lyrics/exhausted.json'));
 
     } finally { env.R2_BUCKET.get = get; env.R2_BUCKET.put = put; console.warn = warn; }
+  }
+  // Invalid lyric options must fail before storage or source access, including cached IDs.
+  {
+    const untouched = { D1_DB: { prepare() { throw new Error('invalid request queried D1'); } } };
+    const ctx = { waitUntil() { throw new Error('invalid request started background work'); } };
+    for (const id of [null, body.id]) {
+      const prefix = id ? 'https://test/lyrics/' + id + '?' : 'https://test/lyrics?track=Test+Song&artist=Test+Artist&';
+      for (const params of ['type=invalid', 'type=', 'type=KARAOKE', 'duration=abc', 'duration=',
+        'duration=0', 'duration=-1', 'duration=Infinity', 'duration=0x10', 'duration=1e3', 'duration=' + '9'.repeat(400)]) {
+        const response = await handleLyricsRequest(id, new URL(prefix + params), untouched, ctx);
+        assert.equal(response.status, 400, params);
+        assert.equal((await response.json()).error, 'BAD_REQUEST');
+      }
+    }
+  }
+  // Both APIs expose the same error contract, including async route failures.
+  {
+    const { default: worker } = await import('../src/index.js');
+    const { buildResponse, errorResponse, sourceFailureResponse } = await import('../src/api/response.js');
+    for (const [status, code] of [[400, 'BAD_REQUEST'], [404, 'NOT_FOUND'], [500, 'INTERNAL_ERROR']]) {
+      const response = errorResponse('Example', status);
+      assert.equal(response.status, status);
+      assert.deepEqual(await response.json(), { success: false, error: code, message: 'Example' });
+      if (status >= 500) assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    }
+    for (const status of [503, 504]) {
+      const response = sourceFailureResponse('retry', status, 7);
+      assert.equal(response.status, status);
+      assert.equal(response.headers.get('Retry-After'), '7');
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.deepEqual(await response.json(), { success: false,
+        error: status === 504 ? 'UPSTREAM_TIMEOUT' : 'SOURCES_UNAVAILABLE',
+        message: 'Lyrics sources are temporarily unavailable; retry shortly.' });
+    }
+    assert.equal((await sourceFailureResponse('miss').json()).message,
+      'No matching song found for this track/artist.');
+    const root = await (await worker.fetch(new Request('https://test/'), {}, {})).json();
+    assert(root.endpoints.lyricsById.path_params);
+    assert(!root.endpoints.lyricsById.path_param);
+    const log = console.error; const fetch = globalThis.fetch; console.error = () => {};
+    globalThis.fetch = async () => Response.json([{ trackName: 'Test', artistName: 'Artist', plainLyrics: 'Words' }]);
+    try {
+      for (const path of ['/lyrics/abc', '/lyrics?track=Test&artist=Artist', '/search?q=Test']) {
+        const response = await worker.fetch(new Request('https://test' + path), {
+          D1_DB: { prepare() { throw new Error('private storage detail'); } }
+        }, { waitUntil() {} });
+        assert.equal(response.status, 500);
+        assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+        assert.equal(response.headers.get('Cache-Control'), 'no-store');
+        assert.deepEqual(await response.json(), { success: false, error: 'INTERNAL_ERROR',
+          message: 'An unexpected error occurred; retry shortly.' });
+      }
+    } finally { console.error = log; globalThis.fetch = fetch; }
+    const normalized = await buildResponse({ plain: 'Words' }, null, 'id', 'Song', 'Artist',
+      { album: null, duration: 0, instrumental: 1 }).json();
+    assert.equal(normalized.duration, 0);
+    assert.equal(normalized.instrumental, true);
   }
   const migration = readFileSync(new URL('../migrations/migration.sql', import.meta.url), 'utf8');
   sql('ALTER TABLE stats RENAME COLUMN updated TO updated_at');

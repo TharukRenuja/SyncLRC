@@ -35,6 +35,15 @@ export async function handleLyricsRequest(id, url, env, ctx) {
 }
 
 export async function handleGetLyrics(id, url, env, ctx, options = null) {
+  const reqType = url.searchParams.get('type')?.trim() || null;
+  if (url.searchParams.has('type') && !['karaoke', 'synced', 'plain'].includes(reqType)) {
+    return errorResponse('Valid types: karaoke, synced, plain.', 400);
+  }
+  const duration = url.searchParams.get('duration')?.trim() || null;
+  if (url.searchParams.has('duration') &&
+      (!duration || !/^\d+(?:\.\d+)?$/.test(duration) || !Number.isFinite(Number(duration)) || Number(duration) <= 0)) {
+    return errorResponse('duration must be a positive number of seconds.', 400);
+  }
   const respond = async (combined, type, id, track, artist, meta, state = {}) => {
     const keys = unique([...lookupKeys(track, [artist]),
       ...lookupKeys(url.searchParams.get('track') || track, url.searchParams.getAll('artist'))]);
@@ -62,7 +71,6 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
   // Repeatable: artist=A&artist=B; first is primary, all are used for matching.
   const artists = url.searchParams.getAll('artist').map(a => a.trim()).filter(Boolean);
   const artist = artists[0] || '';
-  const reqType = url.searchParams.get('type')?.trim() || null;
 
   if (id) {
     const row = await lookupById(id, env);
@@ -110,7 +118,6 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
   }
 
   const album = url.searchParams.get('album')?.trim() || null;
-  const duration = url.searchParams.get('duration')?.trim() || null;
   const requestKeys = lookupKeys(track, artists);
   const primaryKey = requestKeys[0];
 
@@ -152,7 +159,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
       return respond(result.combined, reqType, result.id, result.track, result.artist, meta,
         { pending: !!result.pendingUpstream, upstreamSettled: result.upstreamSettled });
     }
-    return errorResponse('Lyrics not found', 404);
+    return errorResponse('No matching song found for this track/artist.', 404);
   }
 
   if (await getFlag(primaryKey, 'miss', env)) {
