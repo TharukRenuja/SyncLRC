@@ -2,10 +2,6 @@ import { unique } from '../lyrics/normalize.js';
 
 export const lyricColumns = 'id, isrc, name, artist, album, duration, instrumental, karaoke, synced, plain';
 
-export function legacyFallbacksEnabled(env) {
-  return env?.LEGACY_FALLBACKS === '1' || env?.LEGACY_FALLBACKS === 'true';
-}
-
 export async function lookupById(id, env) {
   return await env.D1_DB.prepare(
     `SELECT ${lyricColumns} FROM lyrics WHERE id = ?`
@@ -21,17 +17,10 @@ export async function lookupByKeys(keys, env) {
      WHERE keys.key IN (${placeholders})
      LIMIT 1`
   ).bind(...keys).first().catch(() => null);
-  if (row || !legacyFallbacksEnabled(env)) return row || null;
-  return await env.D1_DB.prepare(
-    `SELECT tracks.* FROM track_keys JOIN tracks ON tracks.id = track_keys.track_id
-     WHERE track_keys.key IN (${placeholders}) LIMIT 1`
-  ).bind(...keys).first().catch(() => null) || null;
+  return row || null;
 }
 
 export async function lookupRequestMetadata(keys, name, artist, env) {
-  if (legacyFallbacksEnabled(env)) {
-    return await lookupByKeys(keys, env) || await lookupByName(name, artist, env);
-  }
   const placeholders = keys.map(() => '?').join(',');
   return await env.D1_DB.prepare(
     `SELECT ${lyricColumns} FROM lyrics WHERE id IN (
@@ -52,10 +41,7 @@ export async function lookupIdentityByIsrc(isrc, env) {
   const row = await env.D1_DB.prepare(
     `SELECT ${lyricColumns} FROM lyrics WHERE isrc = ?`
   ).bind(isrc).first().catch(() => null);
-  if (row || !legacyFallbacksEnabled(env)) return row || null;
-  return await env.D1_DB.prepare(
-    'SELECT id, name, artist, duration, isrc FROM track_ids WHERE isrc = ?'
-  ).bind(isrc).first().catch(() => null) || null;
+  return row || null;
 }
 
 export async function lookupIdentityById(id, env) {
@@ -68,16 +54,7 @@ export async function lookupByName(name, artist, env) {
   const row = await env.D1_DB.prepare(
     `SELECT ${lyricColumns} FROM lyrics WHERE name = ? AND artist = ?`
   ).bind(name, artist).first().catch(() => null);
-  if (row || !legacyFallbacksEnabled(env)) return row || null;
-  return await env.D1_DB.prepare(
-    'SELECT * FROM tracks WHERE name = ? AND artist = ?'
-  ).bind(name, artist).first().catch(() => null) || null;
-}
-
-export async function lookupLegacyById(id, env) {
-  if (!legacyFallbacksEnabled(env)) return null;
-  return await env.D1_DB.prepare('SELECT * FROM tracks WHERE id = ?')
-    .bind(id).first().catch(() => null) || null;
+  return row || null;
 }
 
 export async function rememberKeys(id, keys, env, { replace = false } = {}) {

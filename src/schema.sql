@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS lyrics (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS isrc ON lyrics(isrc) WHERE isrc IS NOT NULL;
-CREATE INDEX IF NOT EXISTS names ON lyrics(name, artist);
+CREATE INDEX IF NOT EXISTS lyrics_names ON lyrics(name, artist);
 
 CREATE TABLE IF NOT EXISTS keys (
   key TEXT PRIMARY KEY,

@@ -4,7 +4,7 @@ import { convertLyrics } from '../lyrics/format.js';
 import { generateHash, lookupKeys, normalizeIsrc, unique } from '../lyrics/normalize.js';
 import { sanitizeLyrics } from '../lyrics/sanitize.js';
 import { setFlag } from './flags.js';
-import { lookupById, lookupIdentityByIsrc, lookupLegacyById } from './metadata.js';
+import { lookupById, lookupIdentityByIsrc } from './metadata.js';
 
 export const retentionDays = 1;
 
@@ -43,24 +43,6 @@ export async function combinedForRow(row, env) {
   const fromR2 = await readCombined(row.id, env);
   if (fromR2) return fromR2;
 
-  // Transition compatibility: old builds stored lyric text in `tracks`.
-  const legacyRow = typeof row.karaoke === 'string' || typeof row.synced === 'string' || typeof row.plain === 'string'
-    ? row
-    : await lookupLegacyById(row.id, env);
-  if (legacyRow && (typeof legacyRow.karaoke === 'string' || typeof legacyRow.synced === 'string'
-      || typeof legacyRow.plain === 'string')) {
-    const legacy = {
-      karaoke: legacyRow.karaoke || null,
-      synced: legacyRow.synced || null,
-      plain: legacyRow.plain || null
-    };
-    if (legacy.karaoke || legacy.synced || legacy.plain) {
-      await env.R2_BUCKET.put(`lyrics/${row.id}.json`, JSON.stringify(legacy), {
-        httpMetadata: { contentType: 'application/json' }
-      }).catch(() => {});
-      return legacy;
-    }
-  }
   return { karaoke: null, synced: null, plain: null };
 }
 
@@ -160,13 +142,6 @@ export async function storeSearchHits(hits, env) {
 export async function purgeExpired(env) {
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
-  const expiredRows = await env.D1_DB.prepare(
-    'SELECT id FROM tracks WHERE fetched_at IS NULL OR fetched_at < ?'
-  ).bind(cutoff).all().catch(() => ({ results: [] }));
-  const tracks = await env.D1_DB.prepare(
-    'DELETE FROM tracks WHERE fetched_at IS NULL OR fetched_at < ?'
-  ).bind(cutoff).run().catch(() => ({ meta: { changes: 0 } }));
-
   let cursor;
   let deletedObjects = 0;
   do {
@@ -188,19 +163,9 @@ export async function purgeExpired(env) {
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
 
-  // Preserve availability if a legacy body already has an R2 copy.
-  for (const row of expiredRows.results || []) {
-    const object = await env.R2_BUCKET.head(`lyrics/${row.id}.json`);
-    if (!object) {
-      await env.D1_DB.prepare(
-        'UPDATE lyrics SET karaoke = 0, synced = 0, plain = 0 WHERE id = ?'
-      ).bind(row.id).run();
-    }
-  }
-
   await env.D1_DB.prepare(
     'DELETE FROM flags WHERE expires_at < ?'
   ).bind(Date.now()).run();
 
-  return { tracks: tracks?.meta?.changes ?? 0, objects: deletedObjects };
+  return { objects: deletedObjects };
 }
