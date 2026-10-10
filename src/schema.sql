@@ -2,6 +2,8 @@
 CREATE TABLE IF NOT EXISTS lyrics (
   id TEXT PRIMARY KEY,
   isrc TEXT,
+  -- 0: not attempted; -1: completed; positive: retry time in milliseconds.
+  metadata INTEGER NOT NULL DEFAULT 0,
   name TEXT NOT NULL,
   artist TEXT NOT NULL,
   album TEXT,

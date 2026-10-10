@@ -1,6 +1,6 @@
 import { unique } from '../lyrics/normalize.js';
 
-export const lyricColumns = 'id, isrc, name, artist, album, duration, instrumental, karaoke, synced, plain';
+export const lyricColumns = 'id, isrc, metadata, name, artist, album, duration, instrumental, karaoke, synced, plain';
 
 export async function lookupById(id, env) {
   return await env.D1_DB.prepare(

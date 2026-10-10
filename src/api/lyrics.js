@@ -4,7 +4,7 @@ import { lookupKeys, stripSearchArtistPrefix, unique } from '../lyrics/normalize
 import { lyricOptions } from '../lyrics/options.js';
 import { sanitizeLyrics } from '../lyrics/sanitize.js';
 import { recheckTrack } from '../refresh.js';
-import { fetchDeezerMeta } from '../sources/deezer.js';
+import { startMetadata, enrichMetadata, metadataMatches } from '../sources/deezer.js';
 import { fetchFromLrcLib } from '../sources/lrclib.js';
 import { fetchFromUpstream } from '../sources/upstream.js';
 import { combinedForRow, readCombined, recordFeatureAttempt, storeCombined } from '../storage/bodies.js';
@@ -45,6 +45,9 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
       { ...state, karaokePending: active, options });
   };
   const refresh = async (row, combined, artists) => {
+    if (!row.isrc && row.metadata > 0 && row.metadata <= Date.now()) {
+      ctx.waitUntil(enrichMetadata(row.id, startMetadata(row, row.name, [row.artist], row.album, row.duration, env), env));
+    }
     if (row.instrumental || !(combined.karaoke || combined.synced || combined.plain) || !featureDue(combined)) return combined;
     const task = recheckTrack(row.name, artists, env, row.id).catch(() => {});
     if (options?.hasInclude && featureDue(combined, options.requested)) {
@@ -86,6 +89,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
     const result = await buildFromSources(sourceName, [sourceArtist], row?.album || null, row?.duration || identity.duration, env, {
       id,
       isrc: identity?.isrc || null,
+      metadata: identity?.metadata,
       keys: lookupKeys(sourceName, [sourceArtist]),
       ctx, options
     });
@@ -133,6 +137,7 @@ export async function handleGetLyrics(id, url, env, ctx, options = null) {
     const result = await buildFromSources(identity.name, [identity.artist, ...artists], album, duration || identity.duration, env, {
       id: identity.id,
       isrc: identity.isrc,
+      metadata: identity.metadata,
       keys: requestKeys,
       ctx, options
     });
@@ -173,7 +178,11 @@ export async function buildFromSources(track, artists, album, duration, env, ide
   const requestKeys = unique([...(identity.keys || []), ...lookupKeys(track, artists)]);
   const primaryKey = requestKeys[0];
   const lrclibPromise = fetchFromLrcLib(track, artists, album, duration);
-  const deezerPromise = fetchDeezerMeta(track, artists, album, duration);
+  let deezerMeta = null;
+  const deezerPromise = startMetadata(identity.id ? identity : null, track, artists, album, duration, env).then(result => {
+    deezerMeta = result?.sourceFailed ? null : result;
+    return result;
+  });
   const lrclibData = await lrclibPromise;
   let upstreamPromise = null;
   let upstreamSettled = false;
@@ -184,7 +193,15 @@ export async function buildFromSources(track, artists, album, duration, env, ide
       return result;
     });
   }
-  const deezerMeta = await deezerPromise;
+
+  // Only wait for identity fallback when no source has usable lyrics yet.
+  if (!(lrclibData?.syncedLyrics || lrclibData?.plainLyrics || lrclibData?.instrumental)) {
+    if (upstreamPromise) await Promise.race([deezerPromise,
+      upstreamPromise.then(result => result.status === 'ok' ? undefined : deezerPromise)]);
+    else await deezerPromise;
+  }
+  if (deezerMeta && lrclibData?.trackName && !metadataMatches({ name: lrclibData.trackName,
+    artist: lrclibData.artistName, album: lrclibData.albumName, duration: lrclibData.duration }, deezerMeta)) deezerMeta = null;
   const canonTrack = lrclibData?.trackName || deezerMeta?.track || track;
   const canonArtist = lrclibData?.artistName || deezerMeta?.artist || artist;
   const upstreamArtists = [...new Set([...artists, canonArtist])];
@@ -261,6 +278,7 @@ export async function buildFromSources(track, artists, album, duration, env, ide
     const stored = await storeCombined(canonTrack, canonArtist, { karaoke: null, synced: null, plain: null },
       meta, env, recordKeys);
     await clearFlag(primaryKey, 'miss', env);
+    identity.ctx.waitUntil(enrichMetadata(stored.id, deezerPromise, env));
     return {
       id: stored.id,
       track: canonTrack, artist: canonArtist, instrumental: true,
@@ -315,6 +333,7 @@ export async function buildFromSources(track, artists, album, duration, env, ide
     await recordFeatureAttempt({ id }, { status: 'retry' }, env);
     Object.assign(merged, await readCombined(id, env));
   }
+  identity.ctx.waitUntil(enrichMetadata(id, deezerPromise, env));
   Object.assign(combined, merged);
   if (upstreamPromise && karaokeLyrics && !rejected) await rememberFailure(primaryKey, upstream, env);
   await clearFlag(primaryKey, 'miss', env);

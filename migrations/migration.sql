@@ -1,5 +1,5 @@
 -- One-time cleanup for the already-migrated production schema.
--- Deploy the current-only application code before running this file.
+-- Apply before deploying code that reads the metadata attempt column.
 -- Fresh installations use src/schema.sql instead.
 
 -- Durable metadata; lyric bodies live in R2 and are purged daily.
@@ -61,3 +61,6 @@ DROP TABLE IF EXISTS track_keys;
 DROP TABLE IF EXISTS track_ids;
 DROP TABLE IF EXISTS tracks;
 DROP TABLE IF EXISTS cache_flags;
+
+-- Existing metadata rows have not attempted background enrichment yet.
+ALTER TABLE lyrics ADD COLUMN metadata INTEGER NOT NULL DEFAULT 0;
