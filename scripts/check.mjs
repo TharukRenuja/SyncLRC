@@ -10,6 +10,7 @@ import { renderDocument } from '../src/lyrics/document.js';
 import { lrcToTtml } from '../src/lyrics/options.js';
 import { convertLyrics } from '../src/lyrics/format.js';
 import { handleScheduled } from '../src/refresh.js';
+import { storeSearchHits } from '../src/storage/bodies.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'synclrc-check-'));
 const db = join(dir, 'db.sqlite');
@@ -32,7 +33,7 @@ const env = { UPSTREAM_URL: 'https://upstream.test', D1_DB: {
     async all() { return sql(query, this.args); }, async run() { return sql(query, this.args); } }; },
   async batch(statements) { return Promise.all(statements.map(s => s.run())); }
 }, R2_BUCKET: { async get(id) { return bodies.has(id) ? { async text() { return bodies.get(id); } } : null; },
-  async put(id, value) { bodies.set(id, value); } } };
+  async put(id, value) { bodies.set(id, value); return { etag: value }; } } };
 const result = { isrc: 'USUG11904206', track: 'Test Song', artist: 'Test Artist', album: 'Test Album', duration: 200 };
 try {
   sql(readFileSync(new URL('../src/schema.sql', import.meta.url), 'utf8'), [], true);
@@ -138,6 +139,81 @@ try {
   assert.equal(sql("SELECT lyric_id FROM keys WHERE key='old-key'").results[0].lyric_id, 'old');
   assert.equal(sql("SELECT * FROM flags WHERE key='expired'").results.length, 0);
   assert.equal(sql("SELECT * FROM flags WHERE key='fresh'").results.length, 1);
+    // Search saves: duplicates, unchanged bodies, cross-request races, and isolated failures.
+  {
+    const get = env.R2_BUCKET.get; const put = env.R2_BUCKET.put; const warn = console.warn;
+    const records = new Map(); const writes = []; const warnings = [];
+    let rateLimit = false; let race = false;
+    const hit = id => ({ id, track: 'Search Test', artist: 'Artist', meta: {}, keys: [id],
+      type: 'synced', rawLrc: '[00:01.00]Words', synced: '[00:01.00]Words', plain: 'Words' });
+    for (const id of ['search-save', 'search-race', 'search-rate', 'search-fail', 'search-after']) {
+      sql('INSERT OR IGNORE INTO lyrics(id,name,artist) VALUES(?,?,?)', [id, 'Search Test', 'Artist']);
+    }
+    env.R2_BUCKET.get = async key => {
+      const value = records.get(key);
+      return value ? { etag: value, async text() { return value; } } : null;
+    };
+    env.R2_BUCKET.put = async (key, value, options) => {
+      writes.push(key);
+      assert(options.onlyIf, 'search write was unconditional');
+      if (key.includes('search-fail')) throw new Error('Storage unavailable');
+      if (rateLimit) { rateLimit = false; throw new Error('put: Reduce your concurrent request rate (10058)'); }
+      if (race) {
+        race = false;
+        records.set(key, JSON.stringify({ karaoke: '<00:01.00>Words', plain: 'Original words', rich: { included: ['agents'] } }));
+        return null;
+      }
+      const existing = records.get(key);
+      if (options.onlyIf.etagMatches && options.onlyIf.etagMatches !== existing) return null;
+      if (options.onlyIf.etagDoesNotMatch === '*' && existing) return null;
+      records.set(key, value);
+      return { etag: value };
+    };
+    console.warn = (...args) => warnings.push(args);
+    try {
+      await storeSearchHits([hit('search-save'), hit('search-save')], env);
+      assert.equal(writes.length, 1, 'duplicate ID wrote twice');
+      await storeSearchHits([hit('search-save')], env);
+      assert.equal(writes.length, 1, 'unchanged body was rewritten');
+      race = true;
+      await storeSearchHits([hit('search-race')], env);
+      const merged = JSON.parse(records.get('lyrics/search-race.json'));
+      assert.equal(merged.plain, 'Original words');
+      assert.equal(merged.karaoke, '<00:01.00>Words');
+      assert.deepEqual(merged.rich.included, ['agents']);
+      assert.equal(merged.synced, '[00:01.00]Words');
+      rateLimit = true;
+      await storeSearchHits([hit('search-rate')], env);
+      assert(records.has('lyrics/search-rate.json'), 'rate-limited save never retried');
+      await storeSearchHits([hit('search-fail'), hit('search-after')], env);
+      assert(records.has('lyrics/search-after.json'), 'one failure stopped subsequent saves');
+      assert.equal(sql('SELECT synced,plain FROM lyrics WHERE id=?', ['search-fail']).results[0].synced, 0);
+      assert.equal(warnings.length, 1);
+      assert.equal(warnings[0][1].id, 'search-fail');
+      await Promise.all([storeSearchHits([hit('search-save')], env), storeSearchHits([hit('search-save')], env)]);
+      assert.equal(writes.filter(key => key.includes('search-save')).length, 1);
+      let active = 0; let peak = 0;
+      env.R2_BUCKET.put = async (key, value) => {
+        active++; peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 10));
+        records.set(key, value); active--;
+        return { etag: value };
+      };
+      const many = Array.from({ length: 7 }, (_, i) => hit('parallel-' + i));
+      await storeSearchHits(many, env);
+      assert.equal(peak, 3, 'save concurrency must be capped at three');
+      assert(many.every(item => records.has('lyrics/' + item.id + '.json')));
+      await storeSearchHits([hit('deadline')], env, Date.now());
+      assert(!records.has('lyrics/deadline.json'), 'expired deadline started a write');
+      let attempts = 0;
+      env.R2_BUCKET.put = async () => { attempts++; throw new Error('put: rate limited (10058)'); };
+      await storeSearchHits([hit('exhausted')], env);
+      assert.equal(attempts, 3, 'retry count is unbounded');
+      assert.equal(warnings.at(-1)[1].id, 'exhausted');
+      assert(!records.has('lyrics/exhausted.json'));
+
+    } finally { env.R2_BUCKET.get = get; env.R2_BUCKET.put = put; console.warn = warn; }
+  }
   const migration = readFileSync(new URL('../migrations/migration.sql', import.meta.url), 'utf8');
   sql('ALTER TABLE stats RENAME COLUMN updated TO updated_at');
   sql("INSERT OR REPLACE INTO stats VALUES('health_stats','{}',123)");

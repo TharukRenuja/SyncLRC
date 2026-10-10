@@ -116,7 +116,7 @@ export async function handleSearch(request, url, env, ctx) {
     ctx.waitUntil((async () => {
       if (searchHits.length) {
         await persistSearchMetadata(searchHits, env);
-        await storeSearchHits(searchHits, env);
+        await storeSearchHits(searchHits, env, Math.min(deadline, Date.now() + 15000));
       }
       await prefetchSearchKaraoke(finalResults, env, deadline);
     })());

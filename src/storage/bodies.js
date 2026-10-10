@@ -111,7 +111,38 @@ export async function storeCombined(track, artist, combined, meta, env, keys = [
 
 // Save search bodies after their metadata.
 
-export async function storeSearchHits(hits, env) {
+// Search updates only fill missing fields; conditional writes preserve concurrent upgrades.
+async function saveSearchBody(id, additions, env, deadline) {
+  const key = `lyrics/${id}.json`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (Date.now() >= deadline - 2000) throw new Error('Search save deadline reached');
+    const obj = await env.R2_BUCKET.get(key);
+    const existing = obj ? JSON.parse(await obj.text()) : {};
+    const combined = { ...existing };
+    for (const [type, lyrics] of Object.entries(additions)) {
+      if (lyrics) combined[type] ||= lyrics;
+    }
+    if (obj && JSON.stringify(combined) === JSON.stringify(existing)) return combined;
+    try {
+      const saved = await env.R2_BUCKET.put(key, JSON.stringify(combined), {
+        onlyIf: obj ? { etagMatches: obj.etag } : { etagDoesNotMatch: '*' },
+        httpMetadata: { contentType: 'application/json' }
+      });
+      if (saved) return combined;
+    } catch (error) {
+      if (!String(error?.message || error).includes('10058')) throw error;
+      if (attempt === 2) throw error;
+    }
+    if (attempt < 2) {
+      const delay = 1100 * (attempt + 1) + Math.random() * 200;
+      if (Date.now() + delay >= deadline - 2000) throw new Error('Search save deadline reached');
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('Search body changed during every save attempt');
+}
+
+export async function storeSearchHits(hits, env, deadline = Date.now() + 20000) {
   const byId = new Map();
   for (const hit of hits) {
     const current = byId.get(hit.id) || { ...hit, keys: [] };
@@ -121,22 +152,25 @@ export async function storeSearchHits(hits, env) {
     byId.set(hit.id, current);
   }
 
-  for (const hit of byId.values()) {
-    const existing = await readCombined(hit.id, env) || {};
-    const combined = {
-      ...existing,
-      karaoke: existing.karaoke || null,
-      synced: existing.synced || (hit.synced ? sanitizeLyrics(hit.synced) : null) || null,
-      plain: existing.plain || (hit.plain ? sanitizeLyrics(hit.plain) : null) || null
-    };
-    await env.R2_BUCKET.put(`lyrics/${hit.id}.json`, JSON.stringify(combined), {
-      httpMetadata: { contentType: 'application/json' }
-    });
-    await env.D1_DB.prepare(
-      'UPDATE lyrics SET karaoke = ?, synced = ?, plain = ? WHERE id = ?'
-    ).bind(combined.karaoke ? 1 : 0, combined.synced ? 1 : 0,
-      combined.plain ? 1 : 0, hit.id).run();
-  }
+  const pending = byId.values();
+  const save = async () => {
+    for (const hit of pending) {
+      if (Date.now() >= deadline - 2000) break;
+      try {
+        const combined = await saveSearchBody(hit.id, {
+          synced: hit.synced ? sanitizeLyrics(hit.synced) : null,
+          plain: hit.plain ? sanitizeLyrics(hit.plain) : null
+        }, env, deadline);
+        await env.D1_DB.prepare(
+          'UPDATE lyrics SET karaoke = MAX(karaoke, ?), synced = MAX(synced, ?), plain = MAX(plain, ?) WHERE id = ?'
+        ).bind(combined.karaoke ? 1 : 0, combined.synced ? 1 : 0,
+          combined.plain ? 1 : 0, hit.id).run();
+      } catch (error) {
+        console.warn('Search save failed', { id: hit.id, error: String(error?.message || error) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, byId.size) }, save));
 }
 
 export async function purgeExpired(env) {
