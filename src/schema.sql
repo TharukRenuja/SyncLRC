@@ -34,5 +34,5 @@ CREATE TABLE IF NOT EXISTS flags (
 CREATE TABLE IF NOT EXISTS stats (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
-  updated_at INTEGER
+  updated INTEGER
 );

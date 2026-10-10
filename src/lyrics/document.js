@@ -54,7 +54,8 @@ function renderLrc(doc) {
         if (child.nodeType === 1) visit(child, voice);
         else if ((child.nodeType === 3 || child.nodeType === 4) && child.data.trim()) {
           const time = element.localName === 'span' ? clock(element.getAttribute('begin')) : null;
-          parts.push({ agent: voice, text: child.data.trim(), time });
+          const end = time ? clock(element.getAttribute('end')) : null;
+          parts.push({ agent: voice, text: child.data.trim(), time, end });
         }
       }
     }
@@ -66,10 +67,15 @@ function renderLrc(doc) {
     }
     let current = parts[0].agent;
     const prefix = current ? `{agent:${current}}` : '';
-    const words = parts.map(part => {
+    const seconds = value => value?.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+    const words = parts.map((part, index) => {
       const marker = part.agent !== current ? `{agent:${part.agent || 'unknown'}}` : '';
       current = part.agent;
-      return marker + (part.time ? `<${part.time}>` : '') + part.text;
+      const next = parts[index + 1];
+      // The next start already closes adjacent words; separate ends preserve silent gaps.
+      const end = part.end && seconds(part.end) > seconds(part.time) &&
+        (!next || (next.time && seconds(part.end) < seconds(next.time))) ? `<${part.end}>` : '';
+      return marker + (part.time ? `<${part.time}>` : '') + part.text + end;
     }).join(' ');
     lines.push(`[${stamp}]${prefix}${background ? '(' + words + ')' : words}`);
   }

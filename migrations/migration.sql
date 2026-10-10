@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS stats (
   value TEXT NOT NULL,
   updated_at INTEGER
 );
+ALTER TABLE stats RENAME COLUMN updated_at TO updated;
 
 -- Current OSS databases already have lyrics/keys and the four old tables.
 -- Preserve remaining identities directly, without intermediate tables.

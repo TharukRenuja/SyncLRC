@@ -38,7 +38,8 @@ export function lrcToTtml(lyrics) {
     if (line.start === undefined) return `<p itunes:key="L${index + 1}">${xmlEscape(line.text)}</p>`;
     const last = line.words.at(-1)?.start ?? line.start;
     // start-only LRC ends are estimates; native TTML keeps its original intervals.
-    const end = Math.max(lines[index + 1]?.start ?? last + 3, last + 0.001);
+    const explicitEnd = line.words.at(-1) && !line.words.at(-1).text.trim() ? last : null;
+    const end = explicitEnd ?? Math.max(lines[index + 1]?.start ?? last + 3, last + 0.001);
     const text = line.words.length ? line.words.map((word, i) => {
       if (!word.text.trim()) return '';
       const wordEnd = line.words.slice(i + 1).find(next => next.start > word.start)?.start ?? end;

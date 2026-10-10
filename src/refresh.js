@@ -55,11 +55,5 @@ export async function prefetchSearchKaraoke(results, env, deadline) {
 }
 
 export async function handleScheduled(event, env, ctx) {
-    await purgeExpired(env);
-    const { results } = await env.D1_DB.prepare(
-      `SELECT id, name, artist FROM lyrics WHERE instrumental = 0 AND karaoke = 1 AND
-       NOT EXISTS (SELECT 1 FROM flags WHERE flags.key = lyrics.id AND kind = 'features' AND expires_at > ?)
-       LIMIT 50`
-    ).bind(Date.now()).all();
-    for (const row of results || []) await recheckTrack(row.name, [row.artist], env, row.id);
+  await purgeExpired(env);
 }

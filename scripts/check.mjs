@@ -6,6 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { handleGetLyrics } from '../src/api/lyrics.js';
 import { startMetadata, enrichMetadata } from '../src/sources/deezer.js';
+import { renderDocument } from '../src/lyrics/document.js';
+import { lrcToTtml } from '../src/lyrics/options.js';
+import { convertLyrics } from '../src/lyrics/format.js';
+import { handleScheduled } from '../src/refresh.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'synclrc-check-'));
 const db = join(dir, 'db.sqlite');
@@ -95,7 +99,48 @@ try {
   assert.equal(keyed.id, body.id);
   assert.equal((await lookupRequestMetadata(['unknown'], 'Exact', 'Artist', env)).id, 'exact');
   assert.equal(await lookupRequestMetadata(['unknown'], 'Unknown', 'Artist', env), null);
+  const native = { ttml: '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s" ttm:agent="v1"><span begin="1s" end="1.5s">Hello</span><span begin="2s" end="3s">world</span><span begin="3s" end="4s">again</span><span ttm:role="x-bg" begin="2s" end="2.5s"><span begin="2s" end="2.5s">Echo</span></span></p></div></body></tt>' };
+  const lrc = renderDocument(native, 'lrc');
+  assert.equal(lrc, '[00:01.00]<00:01.00>Hello<00:01.50> <00:02.00>world <00:03.00>again<00:04.00>');
+  assert.equal(convertLyrics(lrc, 'karaoke', 'synced')[0], '[00:01.00]Hello world again');
+  assert.equal(convertLyrics(lrc, 'karaoke', 'plain')[0], 'Hello world again');
+  assert.match(lrcToTtml(lrc), /begin="00:00:01.000" end="00:00:04.000"/);
+  assert.match(lrcToTtml(lrc), /begin="00:00:01.000" end="00:00:01.500">Hello/);
+  const vocals = renderDocument(native, 'lrc', ['agents', 'background']);
+  assert.match(vocals, /\{agent:v1\}/);
+  assert.match(vocals, /\(<00:02.00>Echo<00:02.50>\)/);
+  assert.match(renderDocument(native, 'ttml'), /end="1.5s"/);
+  assert.equal(renderDocument({ ttml: native.ttml.replaceAll(/ end="[^"]+"/g, '') }, 'lrc'),
+    '[00:01.00]<00:01.00>Hello <00:02.00>world <00:03.00>again');
+
+  // OSS cron cleans storage; it must never fetch or refresh lyrics.
+  sql("INSERT INTO lyrics(id,name,artist,metadata,karaoke,synced,plain) VALUES('old','Old','Artist',-1,1,1,1),('fresh','Fresh','Artist',-1,1,1,1)");
+  sql("INSERT INTO keys VALUES('old-key','old'),('fresh-key','fresh')");
+  sql("INSERT INTO flags VALUES('expired','inflight',0),('fresh','inflight',?)", [Date.now() + 3600000]);
+  bodies.set('lyrics/old.json', JSON.stringify({ karaoke: 'old lyrics' }));
+  bodies.set('lyrics/fresh.json', JSON.stringify({ karaoke: 'fresh lyrics' }));
+  let sourceCalls = 0; let pages = 0; const deleted = [];
+  globalThis.fetch = async () => { sourceCalls++; throw Error('cron must not fetch lyrics'); };
+  env.R2_BUCKET.list = async ({ cursor }) => {
+    pages++;
+    return cursor ? { objects: [{ key: 'lyrics/fresh.json', uploaded: new Date() }], truncated: false } :
+      { objects: [{ key: 'lyrics/old.json', uploaded: new Date(Date.now() - 2 * 86400000) }], truncated: true, cursor: 'next' };
+  };
+  env.R2_BUCKET.delete = async keys => { for (const key of keys) { deleted.push(key); bodies.delete(key); } };
+  await handleScheduled({}, env);
+  assert.equal(sourceCalls, 0);
+  assert.equal(pages, 2);
+  assert.deepEqual(deleted, ['lyrics/old.json']);
+  assert(bodies.has('lyrics/fresh.json'));
+  assert.deepEqual(sql("SELECT metadata,karaoke,synced,plain FROM lyrics WHERE id='old'").results[0],
+    { metadata: -1, karaoke: 0, synced: 0, plain: 0 });
+  assert.equal(sql("SELECT karaoke FROM lyrics WHERE id='fresh'").results[0].karaoke, 1);
+  assert.equal(sql("SELECT lyric_id FROM keys WHERE key='old-key'").results[0].lyric_id, 'old');
+  assert.equal(sql("SELECT * FROM flags WHERE key='expired'").results.length, 0);
+  assert.equal(sql("SELECT * FROM flags WHERE key='fresh'").results.length, 1);
   const migration = readFileSync(new URL('../migrations/migration.sql', import.meta.url), 'utf8');
+  sql('ALTER TABLE stats RENAME COLUMN updated TO updated_at');
+  sql("INSERT OR REPLACE INTO stats VALUES('health_stats','{}',123)");
   sql('ALTER TABLE lyrics DROP COLUMN metadata');
   sql('CREATE TABLE cache_flags(norm TEXT,kind TEXT,expires_at INTEGER)');
   if (migration.includes('DROP COLUMN norm')) {
@@ -108,9 +153,13 @@ try {
     sql('INSERT INTO track_keys VALUES(?,?)', ['legacy-key', body.id]);
   }
   sql(migration, [], true);
+  assert.deepEqual(sql("SELECT value,updated FROM stats WHERE key='health_stats'").results[0], { value: '{}', updated: 123 });
+  assert(sql('PRAGMA table_info(stats)').results.some(column => column.name === 'updated'));
+  assert(!sql('PRAGMA table_info(stats)').results.some(column => column.name === 'updated_at'));
+  assert.equal(sql("SELECT value FROM stats WHERE key='cursor'").results.length, 0);
   assert.equal(sql('SELECT id FROM lyrics WHERE id=?', [body.id]).results[0].id, body.id);
   assert.equal(sql("SELECT lyric_id FROM keys WHERE key='legacy-key'").results[0].lyric_id, body.id);
   assert.equal(sql('SELECT metadata FROM lyrics WHERE id=?', [body.id]).results[0].metadata, 0);
   assert.deepEqual(sql("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").results.map(x => x.name), ['flags', 'keys', 'lyrics', 'stats']);
-  console.log('PASS: nonblocking enrichment; stable conflicts; validation; retry claim; no repeated enrichment; lookup priority; migration');
+  console.log('PASS: nonblocking enrichment; stable conflicts; validation; retry claim; no repeated enrichment; lookup priority; LRC ends/gaps/vocals; cleanup-only cron; expiry/flags/pagination; metadata/keys retained; migration');
 } finally { globalThis.fetch = fetchBefore; rmSync(dir, { recursive: true, force: true }); }
