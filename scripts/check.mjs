@@ -100,9 +100,9 @@ try {
   assert.equal(keyed.id, body.id);
   assert.equal((await lookupRequestMetadata(['unknown'], 'Exact', 'Artist', env)).id, 'exact');
   assert.equal(await lookupRequestMetadata(['unknown'], 'Unknown', 'Artist', env), null);
-  const native = { ttml: '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s" ttm:agent="v1"><span begin="1s" end="1.5s">Hello</span><span begin="2s" end="3s">world</span><span begin="3s" end="4s">again</span><span ttm:role="x-bg" begin="2s" end="2.5s"><span begin="2s" end="2.5s">Echo</span></span></p></div></body></tt>' };
+  const native = { ttml: '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s" ttm:agent="v1"><span begin="1s" end="1.5s">Hello</span> <span begin="2s" end="3s">world</span> <span begin="3s" end="4s">again</span><span ttm:role="x-bg" begin="2s" end="2.5s"><span begin="2s" end="2.5s">Echo</span></span></p></div></body></tt>' };
   const lrc = renderDocument(native, 'lrc');
-  assert.equal(lrc, '[00:01.00]<00:01.00>Hello<00:01.50> <00:02.00>world <00:03.00>again<00:04.00>');
+  assert.equal(lrc, '[00:01.00]<00:01.00>Hello <00:01.50><00:02.00>world <00:03.00>again<00:04.00>');
   assert.equal(convertLyrics(lrc, 'karaoke', 'synced')[0], '[00:01.00]Hello world again');
   assert.equal(convertLyrics(lrc, 'karaoke', 'plain')[0], 'Hello world again');
   assert.match(lrcToTtml(lrc), /begin="00:00:01.000" end="00:00:04.000"/);
@@ -227,6 +227,28 @@ try {
         assert.equal((await response.json()).error, 'BAD_REQUEST');
       }
     }
+  }
+  // Timed spans can be syllables; source text decides spacing.
+  {
+    const source = "<tt xmlns=\"http://www.w3.org/ns/ttml\" xmlns:ttm=\"http://www.w3.org/ns/ttml#metadata\"><body><div><p begin=\"1s\" end=\"5s\" ttm:agent=\"v1\"><span begin=\"1s\" end=\"1.2s\">bro</span><span begin=\"1.2s\" end=\"2s\">ken</span> <span begin=\"2s\" end=\"2.5s\">chain</span> <span begin=\"3s\" end=\"4s\"><span>that</span>!</span><span ttm:role=\"x-bg\" begin=\"3s\" end=\"4s\"><span begin=\"3s\" end=\"4s\">(echo)</span></span></p><p begin=\"6s\" end=\"8s\"><span begin=\"6s\" end=\"7s\">\u4f60</span><span begin=\"7s\" end=\"8s\">\u597d</span></p></div></body></tt>";
+    const converted = renderDocument({ ttml: source }, 'lrc');
+    assert.equal(converted, "[00:01.00]<00:01.00>bro<00:01.20>ken <00:02.00>chain <00:02.50><00:03.00>that!<00:04.00>\n[00:06.00]<00:06.00>\u4f60<00:07.00>\u597d<00:08.00>");
+    assert.equal(convertLyrics(converted, 'karaoke', 'plain')[0], 'broken chain that!\n你好');
+    assert.equal(renderDocument({ ttml: lrcToTtml(converted) }, 'lrc'), converted);
+    const rich = renderDocument({ ttml: source }, 'lrc', ['agents', 'background']);
+    assert.match(rich, /\{agent:v1\}/);
+    assert.match(rich, /\(<00:03.00>echo<00:04.00>\)/);
+    const { readCombined } = await import('../src/storage/bodies.js');
+    const stored = await readCombined('cached', { R2_BUCKET: { async get() {
+      return { async text() { return JSON.stringify({ karaoke: 'old broken spacing',
+        plain: 'Original plain', rich: { ttml: source, included: [], unknown: [], unavailable: [] } }); } };
+    } } });
+    assert.equal(stored.karaoke, converted);
+    assert.equal(stored.plain, 'Original plain');
+    const nested = source.replace('<span begin="1s" end="1.2s">bro</span><span begin="1.2s" end="2s">ken</span>',
+      '<span begin="1s" end="2s">bro<span begin="1.2s" end="2s">ken</span>!</span>');
+    assert.match(renderDocument({ ttml: nested }, 'lrc'), /<00:01.00>bro<00:01.20>ken! /);
+
   }
   // Both APIs expose the same error contract, including async route failures.
   {

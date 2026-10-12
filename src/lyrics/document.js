@@ -47,20 +47,31 @@ function renderLrc(doc) {
   const lines = [];
   function add(node, stamp, agent, background = false) {
     const parts = [];
-    function visit(element, inherited, root = false) {
+    function visit(element, inherited, timing = {}, root = false) {
       if (!root && role(element)) return;
       const voice = element.getAttributeNS(META, 'agent') || inherited;
+      const time = element.localName === 'span' ? clock(element.getAttribute('begin')) : null;
+      const interval = time ? { time, end: clock(element.getAttribute('end')) } : timing;
       for (const child of Array.from(element.childNodes)) {
-        if (child.nodeType === 1) visit(child, voice);
-        else if ((child.nodeType === 3 || child.nodeType === 4) && child.data.trim()) {
-          const time = element.localName === 'span' ? clock(element.getAttribute('begin')) : null;
-          const end = time ? clock(element.getAttribute('end')) : null;
-          parts.push({ agent: voice, text: child.data.trim(), time, end });
+        if (child.nodeType === 1) visit(child, voice, interval);
+        else if (child.nodeType === 3 || child.nodeType === 4) {
+          // Ignore XML indentation; inline whitespace is part of the lyric text.
+          if (!child.data.trim() && /[\r\n]/.test(child.data)) continue;
+          const text = child.data.replace(/\s+/g, ' ');
+          if (!text) continue;
+          const previous = parts.at(-1);
+          const tail = child.previousSibling?.nodeType === 1;
+          if (previous && (!text.trim() || (previous.agent === voice &&
+              (tail || !interval.time || previous.interval === interval)))) {
+            previous.text += text;
+          } else parts.push({ agent: voice, text, ...interval, interval });
         }
       }
     }
-    visit(node, agent, true);
-    if (!parts.length) return;
+    visit(node, agent, {}, true);
+    if (!parts.some(part => part.text.trim())) return;
+    parts[0].text = parts[0].text.trimStart();
+    parts.at(-1).text = parts.at(-1).text.trimEnd();
     if (background && parts[0].text.startsWith('(') && parts.at(-1).text.endsWith(')')) {
       parts[0].text = parts[0].text.slice(1);
       parts.at(-1).text = parts.at(-1).text.slice(0, -1);
@@ -71,12 +82,12 @@ function renderLrc(doc) {
     const words = parts.map((part, index) => {
       const marker = part.agent !== current ? `{agent:${part.agent || 'unknown'}}` : '';
       current = part.agent;
-      const next = parts[index + 1];
+      const next = parts.slice(index + 1).find(part => part.time);
       // The next start already closes adjacent words; separate ends preserve silent gaps.
       const end = part.end && seconds(part.end) > seconds(part.time) &&
         (!next || (next.time && seconds(part.end) < seconds(next.time))) ? `<${part.end}>` : '';
       return marker + (part.time ? `<${part.time}>` : '') + part.text + end;
-    }).join(' ');
+    }).join('');
     lines.push(`[${stamp}]${prefix}${background ? '(' + words + ')' : words}`);
   }
   for (const para of elements(doc).filter(node => node.localName === 'p')) {

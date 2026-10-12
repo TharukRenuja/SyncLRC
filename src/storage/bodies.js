@@ -33,7 +33,8 @@ export async function readCombined(id, env) {
   const obj = await env.R2_BUCKET.get(`lyrics/${id}.json`);
   if (!obj) return null;
   try {
-    return JSON.parse(await obj.text());
+    const combined = JSON.parse(await obj.text());
+    return combined.rich?.ttml ? applyDocument(combined, combined.rich) : combined;
   } catch {
     return null;
   }
