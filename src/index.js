@@ -24,7 +24,7 @@ export default {
       if (path === '' && method === 'GET') {
         return jsonResponse({
           name: 'SyncLRC API',
-          version: '1.1.2',
+          version: '1.2.0',
           author: 'Tharuk Renuja',
           github: 'https://github.com/TharukRenuja/SyncLRC',
           endpoints: {
