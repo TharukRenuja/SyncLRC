@@ -121,7 +121,7 @@ export function decodeDocument(data) {
   if (!elements(doc).some(node => node.localName === 'span' && clock(node.getAttribute('begin')))) throw new Error('TTML is not word-timed');
   const included = vocalFeatures.filter(feature => elements(doc).some(node => feature === 'agents' ? node.hasAttributeNS(META, 'agent') : role(node) === feature));
   const unavailable = vocalFeatures.filter(feature => !included.includes(feature) && data.features?.unavailable?.includes(feature));
-  const rich = { ttml: data.lyrics, provider: data.provider || null, checkedAt, included, unavailable,
+  const rich = { ttml: data.lyrics, checkedAt, included, unavailable,
     unknown: vocalFeatures.filter(feature => !included.includes(feature) && !unavailable.includes(feature)) };
   const lyrics = renderDocument(rich, 'lrc');
   if (!/<\d+:\d{2}[.:]\d+>/.test(lyrics)) throw new Error('TTML lacks usable lead lyrics');
