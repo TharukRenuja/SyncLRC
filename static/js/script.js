@@ -1,5 +1,32 @@
 const API_BASE = 'https://api.synclrc.dev';
 
+function renderLyricLine(element, text, karaoke = false) {
+    const markers = /\[\d+:\d{2}[.:]\d+\]|<\d+:\d{2}[.:]\d+>|\{agent:[^}]+\}|\{bg\}/g;
+    let offset = 0;
+    for (const match of text.matchAll(markers)) {
+        element.appendChild(document.createTextNode(text.slice(offset, match.index)));
+        const marker = document.createElement('span');
+        marker.textContent = match[0];
+        if (match[0].startsWith('[')) {
+            marker.className = karaoke ? 'karaoke-timestamp line-timestamp-emphasis' : 'karaoke-timestamp synced-timestamp';
+            marker.title = 'Line timestamp';
+        } else if (match[0].startsWith('<')) {
+            marker.className = 'karaoke-timestamp word-timestamp';
+            marker.title = 'Word timestamp';
+        } else if (match[0] === '{bg}') {
+            marker.className = 'vocal-marker background-marker';
+            marker.title = 'Background vocal';
+            element.classList.add('background-line');
+        } else {
+            marker.className = 'vocal-marker agent-marker';
+            marker.title = 'Vocal agent ' + match[0].slice(7, -1);
+        }
+        element.appendChild(marker);
+        offset = match.index + match[0].length;
+    }
+    element.appendChild(document.createTextNode(text.slice(offset)));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const resultsDropdown = document.getElementById('results-dropdown');
@@ -340,7 +367,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const lyrics = processLyrics(type === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, type);
         if (!lyrics) return;
 
-        const lineTimestampRegex = /\[\d+:\d{2}[.:]\d+\]/;
         const lines = lyrics.split('\n');
 
         const container = document.createElement('div');
@@ -350,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = document.createElement('div');
             div.className = 'lyric-line';
             if (type !== 'plain') {
-                div.innerHTML = line.replace(lineTimestampRegex, match => `<span class="karaoke-timestamp">${match}</span>`);
+                renderLyricLine(div, line, type === 'karaoke');
             } else {
                 div.textContent = line;
             }

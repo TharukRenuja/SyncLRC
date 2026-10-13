@@ -415,7 +415,43 @@ header {
   color: var(--text-secondary);
   font-size: 0.85rem;
   font-family: monospace;
-  opacity: 0.5;
+}
+
+.word-timestamp {
+  font-size: 0.75rem;
+}
+
+.synced-timestamp {
+  padding-inline-end: 0.4em;
+}
+
+.line-timestamp-emphasis {
+  font-weight: 700;
+}
+
+.vocal-marker {
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+.agent-marker {
+  color: #2563eb;
+}
+
+.background-marker {
+  color: #0f766e;
+}
+
+.background-line {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .agent-marker {
+  color: #fcd34d;
+}
+
+[data-theme="dark"] .background-marker {
+  color: #5eead4;
 }
 
 /* Welcome State */
