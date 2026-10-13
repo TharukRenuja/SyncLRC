@@ -126,8 +126,18 @@ Check the returned `type` before displaying them.
 `GET /lyrics/{id}?format=ttml&include=agents,background`
 
 Both options work with either endpoint. In LRC, `{agent:v1}` identifies a vocal
-part and parenthesized lines mark background vocals. TTML carries these roles in
-its XML. Your player must support them. Agent IDs do not identify credited artists.
+part and `{bg}` marks background vocals. TTML carries these roles in
+its XML. **Your player must support them**. Agent IDs do not identify credited artists.
+
+**LRC extensions require a compatible parser**. Read `{agent:...}` and `{bg}` as
+markers, not lyric text; `{bg}` marks the role separately from the singer.
+Background lines use their own start time and may overlap the main line.
+Ordinary parentheses do not mark a background line.
+
+```lrc
+[00:01.00]{agent:v1}<00:01.00>Hello<00:02.00>
+[00:01.50]{agent:v1}{bg}<00:01.50>Echo<00:02.50>
+```
 
 The response keeps the track metadata and returns these lyric fields:
 

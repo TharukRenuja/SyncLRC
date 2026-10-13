@@ -109,7 +109,7 @@ try {
   assert.match(lrcToTtml(lrc), /begin="00:00:01.000" end="00:00:01.500">Hello/);
   const vocals = renderDocument(native, 'lrc', ['agents', 'background']);
   assert.match(vocals, /\{agent:v1\}/);
-  assert.match(vocals, /\(<00:02.00>Echo<00:02.50>\)/);
+  assert.match(vocals, /\[00:02.00\]\{agent:v1\}\{bg\}<00:02.00>Echo<00:02.50>/);
   assert.match(renderDocument(native, 'ttml'), /end="1.5s"/);
   assert.equal(renderDocument({ ttml: native.ttml.replaceAll(/ end="[^"]+"/g, '') }, 'lrc'),
     '[00:01.00]<00:01.00>Hello <00:02.00>world <00:03.00>again');
@@ -237,7 +237,7 @@ try {
     assert.equal(renderDocument({ ttml: lrcToTtml(converted) }, 'lrc'), converted);
     const rich = renderDocument({ ttml: source }, 'lrc', ['agents', 'background']);
     assert.match(rich, /\{agent:v1\}/);
-    assert.match(rich, /\(<00:03.00>echo<00:04.00>\)/);
+    assert.match(rich, /\[00:03.00\]\{agent:v1\}\{bg\}<00:03.00>echo<00:04.00>/);
     const { readCombined } = await import('../src/storage/bodies.js');
     const stored = await readCombined('cached', { R2_BUCKET: { async get() {
       return { async text() { return JSON.stringify({ karaoke: 'old broken spacing',
@@ -245,6 +245,15 @@ try {
     } } });
     assert.equal(stored.karaoke, converted);
     assert.equal(stored.plain, 'Original plain');
+    const untimedWrapper = source.replace('ttm:role="x-bg" begin="3s" end="4s"', 'ttm:role="x-bg"');
+    const backgroundOnly = renderDocument({ ttml: untimedWrapper }, 'lrc', ['background']);
+    assert.match(backgroundOnly, /\[00:03.00\]\{bg\}<00:03.00>echo<00:04.00>/);
+    assert(!backgroundOnly.includes('{agent:'));
+    assert(!renderDocument({ ttml: untimedWrapper }, 'lrc').includes('{bg}'));
+    const literal = source.replace('>bro</span>', '>(bro</span>').replace('>ken</span>', '>ken)</span>');
+    assert.match(renderDocument({ ttml: literal }, 'lrc'), /<00:01.00>\(bro<00:01.20>ken\)/);
+    assert(!renderDocument({ ttml: literal }, 'lrc').includes('{bg}'));
+
     const nested = source.replace('<span begin="1s" end="1.2s">bro</span><span begin="1.2s" end="2s">ken</span>',
       '<span begin="1s" end="2s">bro<span begin="1.2s" end="2s">ken</span>!</span>');
     assert.match(renderDocument({ ttml: nested }, 'lrc'), /<00:01.00>bro<00:01.20>ken! /);

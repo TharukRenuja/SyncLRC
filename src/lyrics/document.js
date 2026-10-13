@@ -88,7 +88,8 @@ function renderLrc(doc) {
         (!next || (next.time && seconds(part.end) < seconds(next.time))) ? `<${part.end}>` : '';
       return marker + (part.time ? `<${part.time}>` : '') + part.text + end;
     }).join('');
-    lines.push(`[${stamp}]${prefix}${background ? '(' + words + ')' : words}`);
+    const lineTime = background ? parts.find(part => part.time)?.time || stamp : stamp;
+    lines.push(`[${lineTime}]${prefix}${background ? '{bg}' : ''}${words}`);
   }
   for (const para of elements(doc).filter(node => node.localName === 'p')) {
     const stamp = clock(para.getAttribute('begin'));
