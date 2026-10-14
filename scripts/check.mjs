@@ -39,3 +39,36 @@ for (const karaoke of [true, false]) {
     assert.equal(element.children.find(c => c.title === 'Word timestamp').className, 'karaoke-timestamp word-timestamp');
 }
 console.log('PASS: bold line timestamps only in karaoke; word timestamps retain muted styling');
+
+const vocals = source.slice(source.indexOf('    const fetchVocals = async'), source.indexOf('    vocalInputs.forEach(input => input.addEventListener'));
+for (const type of ['karaoke', 'synced', 'plain']) {
+    const requests = [];
+    const inputs = ['agents', 'background'].map(value => ({ value, checked: true, disabled: type === 'plain' }));
+    const context = { vocalInputs: inputs, currentActiveType: type, currentTrack: {track:'Fixture',artist:'Artist'}, vocalRequestId: 0,
+        vocalLyrics: null, API_BASE: 'https://test', URLSearchParams, showVocalStatus() {}, renderLyrics() {},
+        fetch: async url => { requests.push(new URL(url)); return {ok:true,json:async()=>({type,lyrics:'Selected output',features:{unavailable:[],unknown:[]}})}; } };
+    const fetchVocals = runInNewContext(vocals + '\nfetchVocals', context);
+    await fetchVocals();
+    if (type === 'plain') {
+        assert.equal(requests.length, 0);
+        assert.equal(context.vocalLyrics, null);
+        continue;
+    }
+    assert.equal(requests[0].searchParams.get('type'), type);
+    assert.equal(requests[0].searchParams.get('include'), type === 'plain' ? 'background' : 'agents,background');
+    assert.equal(context.vocalLyrics.type, type);
+    assert.equal(context.vocalLyrics.lyrics, 'Selected output');
+    context.fetch = async () => ({ ok:true,json:async()=>({type,lyrics:'Fallback',features:{unavailable:['background'],unknown:[]}}) });
+    await fetchVocals();
+    assert.equal(inputs[1].checked, false);
+    let resolve;
+    inputs[1].checked = true;
+    context.fetch = () => new Promise(r => { resolve = r; });
+    const pending = fetchVocals();
+    context.vocalRequestId++;
+    resolve({ok:true,json:async()=>({type,lyrics:'Stale response'})});
+    await pending;
+    assert.equal(context.vocalLyrics, null);
+}
+assert.equal((source.match(/vocalLyrics\?\.type === currentActiveType \? vocalLyrics.lyrics : currentRawLyrics/g) || []).length, 2, 'copy and save must use the active format');
+console.log('PASS: active-format vocal requests, plain makes no vocal request, unavailable reset, stale response ignored, copy/save select active output');

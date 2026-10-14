@@ -286,11 +286,13 @@ document.addEventListener('DOMContentLoaded', () => {
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             renderLyrics(tab.dataset.type);
+            if ([...vocalInputs].some(input => input.checked && !input.disabled)) fetchVocals();
         });
     });
 
     const fetchVocals = async () => {
-        const selected = [...vocalInputs].filter(input => input.checked).map(input => input.value);
+        const selected = [...vocalInputs].filter(input => input.checked && !input.disabled).map(input => input.value);
+        const type = currentActiveType;
         const requestId = ++vocalRequestId;
         vocalLyrics = null;
         showVocalStatus('');
@@ -299,13 +301,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         showVocalStatus('Loading vocal features…', true);
-        const params = new URLSearchParams({ ...currentTrack, type: 'karaoke', format: 'lrc', include: selected.join(',') });
+        const params = new URLSearchParams({ ...currentTrack, type, format: 'lrc', include: selected.join(',') });
         try {
             const response = await fetch(`${API_BASE}/lyrics?${params}`);
             if (!response.ok) throw new Error('Vocal features unavailable');
             const data = await response.json();
             if (requestId !== vocalRequestId) return;
-            if (data.type === 'karaoke') vocalLyrics = data.lyrics;
+            if (data.type === type) vocalLyrics = { type, lyrics: data.lyrics };
             const names = { agents: 'Vocal agents', background: 'Background vocals' };
             const unavailable = data.features?.unavailable || [];
             const unknown = data.features?.unknown || [];
@@ -327,8 +329,17 @@ document.addEventListener('DOMContentLoaded', () => {
     vocalInputs.forEach(input => input.addEventListener('change', fetchVocals));
 
     const renderLyrics = (type) => {
+        if (currentActiveType !== type) {
+            vocalRequestId++;
+            vocalLyrics = null;
+            showVocalStatus('');
+        }
         currentActiveType = type;
-        vocalOptions.hidden = type !== 'karaoke';
+        vocalOptions.hidden = !currentRawLyrics || type === 'plain';
+        vocalInputs.forEach(input => {
+            input.disabled = type === 'plain';
+            input.closest('label').hidden = input.disabled;
+        });
 
         if (!currentRawLyrics) {
             lyricsContent.innerHTML = `
@@ -344,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         const typeWeights = { 'karaoke': 3, 'synced': 2, 'plain': 1 };
-        const availableWeight = type === 'karaoke' && vocalLyrics ? 3 : typeWeights[currentLyricsType] || 0;
+        const availableWeight = vocalLyrics?.type === type ? typeWeights[type] : typeWeights[currentLyricsType] || 0;
         const requestedWeight = typeWeights[type] || 1;
 
         if (requestedWeight > availableWeight) {
@@ -364,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const lyrics = processLyrics(type === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, type);
+        const lyrics = processLyrics(vocalLyrics?.type === type ? vocalLyrics.lyrics : currentRawLyrics, type);
         if (!lyrics) return;
 
         const lines = lyrics.split('\n');
@@ -440,7 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     copyButton.addEventListener('click', async () => {
-        const textToCopy = processLyrics(currentActiveType === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, currentActiveType);
+        const textToCopy = processLyrics(vocalLyrics?.type === currentActiveType ? vocalLyrics.lyrics : currentRawLyrics, currentActiveType);
         try {
             await navigator.clipboard.writeText(textToCopy);
             const originalText = copyButton.innerHTML;
@@ -515,7 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     saveButton.addEventListener('click', () => {
         if (!currentRawLyrics) return;
-        const text = processLyrics(currentActiveType === 'karaoke' && vocalLyrics ? vocalLyrics : currentRawLyrics, currentActiveType);
+        const text = processLyrics(vocalLyrics?.type === currentActiveType ? vocalLyrics.lyrics : currentRawLyrics, currentActiveType);
         if (!text) return;
 
         let ext = 'lrc';

@@ -915,7 +915,7 @@ footer p {
   color: var(--text-secondary);
   font-size: 0.8rem;
 }
-.vocal-options[hidden], .toast[hidden] { display: none; }
+.vocal-options[hidden], .vocal-options label[hidden], .toast[hidden] { display: none; }
 .vocal-options label { position: relative; display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; min-height: 24px; }
 .vocal-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .toggle-icon { width: 24px; height: 14px; border-radius: 3px; border: 1px solid var(--text-secondary); position: relative; flex-shrink: 0; }
