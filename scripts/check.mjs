@@ -61,6 +61,10 @@ for (const type of ['karaoke', 'synced', 'plain']) {
     context.fetch = async () => ({ ok:true,json:async()=>({type,lyrics:'Fallback',features:{unavailable:['background'],unknown:[]}}) });
     await fetchVocals();
     assert.equal(inputs[1].checked, false);
+    inputs.forEach(input => { input.checked = true; });
+    context.fetch = async () => { throw new Error('Source unavailable'); };
+    await fetchVocals();
+    assert(inputs.every(input => !input.checked), 'failed requests must reset selected switches');
     let resolve;
     inputs[1].checked = true;
     context.fetch = () => new Promise(r => { resolve = r; });

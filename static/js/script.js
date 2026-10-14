@@ -321,6 +321,9 @@ document.addEventListener('DOMContentLoaded', () => {
             renderLyrics(currentActiveType);
         } catch (err) {
             if (requestId !== vocalRequestId) return;
+            vocalInputs.forEach(input => {
+                if (selected.includes(input.value)) input.checked = false;
+            });
             showVocalStatus('Couldn’t load vocal features. Toggle again to retry.');
             renderLyrics(currentActiveType);
         }
