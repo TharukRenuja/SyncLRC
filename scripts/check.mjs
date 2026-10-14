@@ -16,6 +16,7 @@ import { storeSearchHits } from '../src/storage/bodies.js';
   {
     const rich = { ttml: '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s" ttm:agent="v1"><span begin="1s" end="2s">Hello </span><span begin="3s" end="4s">world</span><span ttm:role="x-bg"><span begin="1.5s" end="2.5s">Echo</span></span></p></div></body></tt>', included: ['agents', 'background'], unavailable: [], unknown: [] };
     const combined = { rich, karaoke: 'stored karaoke', synced: 'stored synced', plain: 'Original plain (literal)' };
+    assert.deepEqual(lyricOptions(new URL('https://test/lyrics?include=agents,BG,background,bg')).requested, ['agents', 'background']);
     const options = type => lyricOptions(new URL(`https://test/lyrics?type=${type}&include=agents,background`));
     const synced = renderOptions(combined, { lyrics: 'stored synced', type: 'synced' }, options('synced'));
     assert.equal(synced.lyrics, '[00:01.00]{agent:v1}Hello world\n[00:01.50]{agent:v1}{bg}Echo');

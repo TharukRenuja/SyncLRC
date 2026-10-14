@@ -11,77 +11,35 @@ SyncLRC is a **simple, minimalist lyrics finder** for discovering and exporting 
 
 ## Features
 
-- **Lyric Formats**: Karaoke (Enhanced LRC), Synced (Standard LRC), and Plain Text.
-- **Optional Vocal Features**: Vocal agents and background vocals in LRC or TTML.
-- **Clean Sanitization**: Automatically filters out metadata and credit clutter (lyricists, composers, etc.) for a distraction-free experience.
-- **Developer API**: `/search` and `/lyrics` endpoints.
-- **Web Access**: Try it at **[synclrc.dev](https://synclrc.dev)**.
+- **Lyrics**: Word-timed `karaoke`, `synced` LRC and `plain` text.
+- **Vocal Features**: `agents` and `background` vocals for karaoke and synced lyrics.
+- **Formats**: `LRC` and `TTML` output.
+- **Clean Output**: filters `metadata` and `credit` clutter.
+- **Developer API**: Search and fetch lyrics by `track` or `ID`.
+- **Web**: Find and export lyrics at **[synclrc.dev](https://synclrc.dev)**.
 
 ---
 
 ## Developer API
 
-#### 1. Search Tracks & Lyrics
+### 1. Fetch Lyrics
 
-`GET /search?q={query}&limit={limit}&offset={offset}`
+**By track and artist**
 
-<details>
-<summary><b>Parameters & Response</b></summary>
+`GET /lyrics?track={track}&artist={artist}`
 
-**Parameters:**
+**By ID**
 
-- `q`: (Required) Track or artist name.
-- `limit`: (Optional) `1`–`50`, default `10`.
-- `offset`: (Optional) `0`–`1000`, default `0`.
-
-**Response:**
-
-```json
-{
-  "results": [
-    {
-      "id": "abc123...",
-      "track": "Song Name",
-      "artist": "Artist Name",
-      "lyrics": {
-        "plain": "Lyrics text...",
-        "synced": "[00:00.00]...",
-        "karaoke": "[00:00.00]<00:00.05>..."
-      }
-    }
-  ]
-}
-```
-
-</details>
-
-#### 2. Fetch Specific Lyrics
-
-**Fetch by ID**
-
-`GET /lyrics/{id}?type={type}`
-
-**Fetch by Track & Artist**
-
-`GET /lyrics?track={track}&artist={artist}&type={type}`
-
-For collaborations, repeat `artist` for each artist:
-
-`GET /lyrics?track={track}&artist={artist1}&artist={artist2}`
+`GET /lyrics/{id}`
 
 <details>
 <summary><b>Parameters & Response</b></summary>
 
-- `track`: (Required for track/artist requests) Song name.
-- `artist`: (Required for track/artist requests) Artist name; repeat for collaborations.
+- `track`, `artist`: Required for track/artist requests. Repeat `artist` for collaborations.
 - `type`: (Optional) `karaoke`, `synced`, or `plain`.
-- `album`: (Optional, track/artist requests) Album name to improve matching.
-- `duration`: (Optional, track/artist requests) Track duration in seconds to improve matching.
+- `album`, `duration`: Optional matching hints for track/artist requests; duration is in seconds.
 - `format`: (Optional) `lrc` or `ttml`.
-- `include`: (Optional) Comma-separated `agents` and/or `background`. Use with `type=karaoke` or omit `type`.
-
-Omit `type`, `format`, and `include` for the default response below. Missing lyric
-variants are `null`. `artist` is a string containing the artist credit.
+- `include`: (Optional) `agents`, `bg`, or `agents,bg` for karaoke and synced lyrics. `bg` is an alias for `background`.
 
 **Default Response:**
 
@@ -93,18 +51,19 @@ variants are `null`. `artist` is a string containing the artist credit.
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
-  "karaoke": "[00:00.00]<00:00.05>...",
-  "synced": "[00:00.00]...",
-  "plain": "Lyrics text..."
+  "karaoke": "[00:01.00]<00:01.00>Hello",
+  "synced": "[00:01.00]Hello",
+  "plain": "Hello"
 }
 ```
 
-**Request a Lyric Type:**
+Missing variants are `null`. Requesting `type`, `format` or `include` returns a single `lyrics` field with its actual `type`. If the requested type is unavailable, available fallback lyrics are returned.
 
-`GET /lyrics/{id}?type=karaoke`
+**Formats & Vocal Features:**
 
-If the requested type is unavailable, the API returns the best available lyrics.
-Check the returned `type` before displaying them.
+`GET /lyrics?track={track}&artist={artist}&type=synced&include=agents,bg`
+
+`GET /lyrics/{id}?format=ttml&include=agents,bg`
 
 ```json
 {
@@ -114,41 +73,8 @@ Check the returned `type` before displaying them.
   "album": "Album Name",
   "duration": 215,
   "instrumental": false,
-  "lyrics": "[00:00.00]Hello",
-  "type": "synced"
-}
-```
-
-**Optional Formats & Vocal Features:**
-
-`GET /lyrics?track={track}&artist={artist}&format=lrc&include=agents,background`
-
-`GET /lyrics/{id}?format=ttml&include=agents,background`
-
-Both options work with either endpoint. In LRC, `{agent:v1}` identifies a vocal
-part and `{bg}` marks background vocals. TTML carries these roles in
-its XML. **Your player must support them**. Agent IDs do not identify credited artists.
-
-**LRC extensions require a compatible parser**. Read `{agent:...}` and `{bg}` as
-markers, not lyric text; `{bg}` marks the role separately from the singer.
-Background lines use their own start time and may overlap the main line.
-Ordinary parentheses do not mark a background line.
-
-Use `type=synced&include=agents,background` for line-timed vocal markers.
-Use `type=plain&include=background` for background lines in parentheses;
-plain output never includes agent tags.
-
-```lrc
-[00:01.00]{agent:v1}<00:01.00>Hello<00:02.00>
-[00:01.50]{agent:v1}{bg}<00:01.50>Echo<00:02.50>
-```
-
-The response keeps the track metadata and returns these lyric fields:
-
-```json
-{
-  "lyrics": "[00:00.00]{agent:v1}<00:00.05>Hello",
-  "type": "karaoke",
+  "lyrics": "[00:01.00]{agent:v1}Hello",
+  "type": "synced",
   "format": "lrc",
   "features": {
     "requested": ["agents", "background"],
@@ -159,22 +85,50 @@ The response keeps the track metadata and returns these lyric fields:
 }
 ```
 
-- `requested`: Features you asked for.
-- `included`: Features present in the returned lyrics.
-- `unavailable`: Features absent from the checked results.
-- `unknown`: Features that could not be verified.
+`features` appears when `include` is provided. Check `type` and feature availability
+before displaying lyrics. `unknown` means availability could not be verified.
 
-`features` is returned when `include` is provided. Formatting or feature requests
-still return fallback lyrics when karaoke is unavailable; check `type` and `features`.
+LRC uses `{agent:v1}` for vocal parts and `{bg}` for background lines, requiring a compatible player. Agent IDs do not identify artists. Background lines have their own timestamps and may overlap lead vocals; ordinary parentheses do not mark a background line. TTML carries vocal roles in XML.
 
-**Error Responses:**
+**Errors:**
 
-- `400`: Missing required parameters or invalid options.
-- `404`: No matching lyrics or ID found.
-- `503`: Sources temporarily unavailable, with no usable fallback.
-- `504`: Upstream search timed out, with no usable fallback.
+- `400`: Missing parameters or invalid options.
+- `404`: No matching lyrics or ID.
+- `500`: Unexpected server error.
+- `503`: Sources unavailable, with no usable fallback.
+- `504`: Source timeout, with no usable fallback.
 
 For `503` or `504`, retry with backoff and respect `Retry-After`.
+
+</details>
+
+### 2. Search
+
+`GET /search?q={query}&limit={limit}&offset={offset}`
+
+<details>
+<summary><b>Parameters & Response</b></summary>
+
+- `q`: Required track or artist name.
+- `limit`: (Optional) `1`–`50`; default `10`.
+- `offset`: (Optional) `0`–`1000`; default `0`.
+
+```json
+{
+  "results": [
+    {
+      "id": "abc123...",
+      "track": "Song Name",
+      "artist": "Artist Name",
+      "lyrics": {
+        "karaoke": "[00:01.00]<00:01.00>Hello",
+        "synced": "[00:01.00]Hello",
+        "plain": "Hello"
+      }
+    }
+  ]
+}
+```
 
 </details>
 
@@ -182,61 +136,39 @@ For `503` or `504`, retry with backoff and respect `Retry-After`.
 
 ## Contributing
 
-Contributions are welcome!
+Contributions are welcome through [issues](https://github.com/TharukRenuja/SyncLRC/issues) and [pull requests](https://github.com/TharukRenuja/SyncLRC/pulls).
 
-1.  **Improvements**: Feel free to open an [issue](https://github.com/TharukRenuja/SyncLRC/issues) or [pull request](https://github.com/TharukRenuja/SyncLRC/pulls).
-2.  **Sanitization**: We maintain a list of strings to filter out (like "Synced by", "Translated by"). If you find more clutter in lyrics, please add them to the sanitization list in `src/lyrics/sanitize.js`.
-
+- Report bugs with the request URL, expected behavior and actual result.
+- Suggest features or improvements through an issue.
+- For lyric cleanup improvements, update [sanitize.js](src/lyrics/sanitize.js).
 
 ---
 
 ## Community Mirrors
 
-The official SyncLRC API is served at `api.synclrc.dev`. Requests to that host are
-answered by SyncLRC infrastructure.
+Community mirrors are independently hosted SyncLRC APIs. Their availability, limits and caching policies may differ from the official API at `api.synclrc.dev`.
 
-SyncLRC may also be reached through independent community mirrors. A community mirror
-is a separate deployment operated by its own owner, and it is not part of SyncLRC
-infrastructure. Community mirrors may differ from the official API in caching,
-availability, rate limits, and other usage policies.
-
-If you operate a mirror backed by the SyncLRC upstream, please publish it as a general
-community mirror rather than restricting it to a single application. Mirrors are
-responsible for their own caching decisions and for their own legal and compliance
-obligations. If a mirror is presented to users, it should identify itself as
-independently operated so it is not mistaken for official SyncLRC infrastructure.
+Mirrors may serve the wider community, clearly state who operates them and disclose their usage policies. Each operator manages their own infrastructure and is responsible for following applicable laws and source terms.
 
 ---
 
 ## Legal Disclaimer
 
-SyncLRC makes word-by-word synced lyrics easy to consume. Most alternatives make you
-sign up for an API key, ship a per-client agent that polls for updates, or build your own
-translation and lyrics pipeline. SyncLRC is a plain HTTP endpoint that returns the format
-you ask for.
+SyncLRC fetches lyrics on demand from third-party sources and does not claim ownership of that content. Lyrics remain the property of their respective copyright holders. SyncLRC is an independent project and is not affiliated with or endorsed by those sources.
 
-All lyric content is fetched on-demand from third-party sources. The project does not
-claim ownership of third-party lyrics, which remain the property of their respective
-owners.
+Lyric bodies are cached temporarily in R2 rather than permanently archived. A daily cleanup removes objects older than 24 hours and expired flags; objects may remain until the next cleanup. D1 retains track metadata and lookup keys so lyrics can be fetched again on demand.
 
-Lyrics are cached for one day, not archived. A daily cron deletes R2 lyric objects and
-transient legacy D1 rows older than 24 hours. Durable D1 metadata and lookup keys
-remain so an expired lyric id can be rebuilt on demand.
+Self-hosters and community mirror operators are responsible for their deployments, caching policies and compliance with applicable laws and source terms. Access through SyncLRC does not grant permission to redistribute lyrics.
 
-Track metadata and lookup keys live in D1; lyric bodies live in R2 and are expired daily.
-This avoids storing large lyric payloads in the permanent metadata table. When you
-self-host, both resources are yours to manage.
-
-The SyncLRC source code is licensed under AGPL-3.0. That license applies to the software
-itself and does not grant rights to third-party copyrighted content retrieved through the
-software.
+The source code is licensed under AGPL-3.0. This license applies to the software, not to third-party lyrics, and does not replace applicable content rights or attribution requirements.
 
 ---
 
 ## Self-Hosting
 
-You need a Cloudflare Worker, a D1 database, an R2 bucket, and access to a compatible
-upstream lyrics API. Lyric bodies are cached for one day; track metadata is retained.
+Deploy your own SyncLRC API with a Cloudflare Worker, D1 database, R2 bucket and compatible upstream lyrics API.
+
+Get an upstream token from [@wbwlrcbot](https://t.me/wbwlrcbot) for **30 free uncached requests per day**. Cached requests are free and available without a token at [api.wbwlrc.workers.dev](https://api.wbwlrc.workers.dev/). Public community mirrors can request a mirror plan with up to **1,000 free uncached requests per day**. Supporter plans offer higher limits. Your support helps keep SyncLRC free for everyone and gives back to its sources through donations.
 
 1. Install dependencies:
 
@@ -266,8 +198,7 @@ upstream lyrics API. Lyric bodies are cached for one day; track metadata is reta
    npx wrangler deploy
    ```
 
-Upgrading an existing database from before `v1.1.2`? Use the migration in place of
-the fresh schema:
+For an existing database with the legacy tables, use the one-time migration in place of the fresh schema. It also adds the `metadata` column required by the current API. Do not rerun it on an already-migrated database:
 
 ```bash
 npx wrangler d1 execute synclrc-d1 --remote --file=migrations/migration.sql
@@ -277,4 +208,10 @@ npx wrangler d1 execute synclrc-d1 --remote --file=migrations/migration.sql
 
 ## Credits
 
-This project uses the [iTunes Search API](https://performance-partners.apple.com/search-api) for web search metadata, [Deezer](https://developers.deezer.com) for API track metadata, and [LRCLIB](https://lrclib.net), [LDDC](https://github.com/chenmozhijin/LDDC), [BiniLyrics](https://lyrics.binimum.org), [BetterLyrics](https://github.com/jayfunc/BetterLyrics), and [amll-ttml-db](https://github.com/amll-dev/amll-ttml-db) for fetching lyrics from `Netease`, `QQ Music`, `Kugou`, `Apple Music`, `Spotify` and `Musixmatch`.
+- [LRCLIB](https://lrclib.net), the original inspiration, main lyrics source and reference for match validation.
+- [Deezer](https://developers.deezer.com), for track metadata.
+- [iTunes Search API](https://performance-partners.apple.com/search-api), for web search and early metadata validation.
+- [syncedlyrics](https://github.com/moehmeni/syncedlyrics), the foundation of the original Python version.
+- [LDDC](https://github.com/chenmozhijin/LDDC), for parsing and format reference.
+- [BiniLyrics](https://lyrics.binimum.org), [BetterLyrics](https://github.com/jayfunc/BetterLyrics) and [amll-ttml-db](https://github.com/amll-dev/amll-ttml-db), for word-timed lyric inspiration.
+- [Metrolist](https://github.com/MetrolistGroup/Metrolist), for discovering and testing vocal features, and my daily streaming client.

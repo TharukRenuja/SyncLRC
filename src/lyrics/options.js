@@ -7,7 +7,7 @@ export function lyricOptions(url) {
   const hasInclude = url.searchParams.has('include');
   if (!explicitFormat && !hasInclude) return null;
   const format = (url.searchParams.get('format') || 'lrc').trim().toLowerCase();
-  const requested = [...new Set((url.searchParams.get('include') || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean))];
+  const requested = [...new Set((url.searchParams.get('include') || '').split(',').map(value => value.trim().toLowerCase()).map(value => value === 'bg' ? 'background' : value).filter(Boolean))];
   if (!['lrc', 'ttml'].includes(format)) throw new Error('Valid formats: lrc, ttml.');
   if (hasInclude && (!requested.length || requested.some(value => !FEATURES.includes(value)))) {
     throw new Error('Valid include features: agents, background.');
