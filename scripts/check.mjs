@@ -55,7 +55,7 @@ for (const type of ['karaoke', 'synced', 'plain']) {
         continue;
     }
     assert.equal(requests[0].searchParams.get('type'), type);
-    assert.equal(requests[0].searchParams.get('include'), type === 'plain' ? 'background' : 'agents,background');
+    assert.equal(requests[0].searchParams.get('include'), type === 'plain' ? 'bg' : 'agents,bg');
     assert.equal(context.vocalLyrics.type, type);
     assert.equal(context.vocalLyrics.lyrics, 'Selected output');
     context.fetch = async () => ({ ok:true,json:async()=>({type,lyrics:'Fallback',features:{unavailable:['background'],unknown:[]}}) });

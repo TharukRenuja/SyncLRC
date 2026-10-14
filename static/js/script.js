@@ -301,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         showVocalStatus('Loading vocal features…', true);
-        const params = new URLSearchParams({ ...currentTrack, type, format: 'lrc', include: selected.join(',') });
+        const params = new URLSearchParams({ ...currentTrack, type, format: 'lrc', include: selected.map(value => value === 'background' ? 'bg' : value).join(',') });
         try {
             const response = await fetch(`${API_BASE}/lyrics?${params}`);
             if (!response.ok) throw new Error('Vocal features unavailable');
