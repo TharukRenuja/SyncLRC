@@ -24,13 +24,13 @@ export default {
       if (path === '' && method === 'GET') {
         return jsonResponse({
           name: 'SyncLRC API',
-          version: '1.2.0',
+          version: '1.2.1',
           author: 'Tharuk Renuja',
           github: 'https://github.com/TharukRenuja/SyncLRC',
           endpoints: {
             search: { path: '/search', method: 'GET', params: { q: 'string (required)', limit: 'int', offset: 'int' } },
-            lyrics: { path: '/lyrics', method: 'GET', params: { track: 'string (required)', artist: 'string (required, repeatable for collabs)', type: 'karaoke|synced|plain', format: 'lrc|ttml (optional)', include: 'agents,background (optional)', album: 'string', duration: 'int' } },
-            lyricsById: { path: '/lyrics/{id}', method: 'GET', path_params: { id: '32-char hex hash' }, params: { type: 'karaoke|synced|plain', format: 'lrc|ttml (optional)', include: 'agents,background (optional)' } }
+            lyrics: { path: '/lyrics', method: 'GET', params: { track: 'string (required)', artist: 'string (required, repeatable for collabs)', type: 'karaoke|synced|plain', format: 'lrc|ttml (optional)', include: 'agents,bg (optional)', album: 'string', duration: 'int' } },
+            lyricsById: { path: '/lyrics/{id}', method: 'GET', path_params: { id: '32-char hex hash' }, params: { type: 'karaoke|synced|plain', format: 'lrc|ttml (optional)', include: 'agents,bg (optional)' } }
           }
         }, 200, 'public, max-age=86400');
       }
