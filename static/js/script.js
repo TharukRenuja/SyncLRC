@@ -27,6 +27,11 @@ function renderLyricLine(element, text, karaoke = false) {
     element.appendChild(document.createTextNode(text.slice(offset)));
 }
 
+function selectLyricText(variants, type, vocals) {
+    if (vocals?.type === type) return vocals.lyrics;
+    return variants?.[type] || variants?.karaoke || variants?.synced || variants?.plain || '';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const resultsDropdown = document.getElementById('results-dropdown');
@@ -217,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const bestType = data.karaoke ? 'karaoke' : data.synced ? 'synced' : 'plain';
             if (!data[bestType]) throw { type: 'not_found' };
 
-            currentRawLyrics = data[bestType];
+            currentRawLyrics = { karaoke: data.karaoke, synced: data.synced, plain: data.plain };
             currentLyricsType = bestType;
             currentActiveType = bestType;
             
@@ -378,7 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const lyrics = processLyrics(vocalLyrics?.type === type ? vocalLyrics.lyrics : currentRawLyrics, type);
+        const lyrics = processLyrics(selectLyricText(currentRawLyrics, type, vocalLyrics), type);
         if (!lyrics) return;
 
         const lines = lyrics.split('\n');
@@ -454,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     copyButton.addEventListener('click', async () => {
-        const textToCopy = processLyrics(vocalLyrics?.type === currentActiveType ? vocalLyrics.lyrics : currentRawLyrics, currentActiveType);
+        const textToCopy = processLyrics(selectLyricText(currentRawLyrics, currentActiveType, vocalLyrics), currentActiveType);
         try {
             await navigator.clipboard.writeText(textToCopy);
             const originalText = copyButton.innerHTML;
@@ -529,7 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     saveButton.addEventListener('click', () => {
         if (!currentRawLyrics) return;
-        const text = processLyrics(vocalLyrics?.type === currentActiveType ? vocalLyrics.lyrics : currentRawLyrics, currentActiveType);
+        const text = processLyrics(selectLyricText(currentRawLyrics, currentActiveType, vocalLyrics), currentActiveType);
         if (!text) return;
 
         let ext = 'lrc';

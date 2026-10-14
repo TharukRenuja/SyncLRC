@@ -74,5 +74,17 @@ for (const type of ['karaoke', 'synced', 'plain']) {
     await pending;
     assert.equal(context.vocalLyrics, null);
 }
-assert.equal((source.match(/vocalLyrics\?\.type === currentActiveType \? vocalLyrics.lyrics : currentRawLyrics/g) || []).length, 2, 'copy and save must use the active format');
+assert.equal((source.match(/selectLyricText\(currentRawLyrics, currentActiveType, vocalLyrics\)/g) || []).length, 2, 'copy and save must use the active format');
 console.log('PASS: active-format vocal requests, plain makes no vocal request, unavailable reset, stale response ignored, copy/save select active output');
+
+const select = runInNewContext(helper + '\nselectLyricText', {});
+const variants = { karaoke: '[00:01.00]<00:01.00>Joinedwords', synced: '[00:01.00]Joined words', plain: 'Original plain, with punctuation.' };
+assert.equal(select(variants, 'synced', null), variants.synced);
+assert.equal(select(variants, 'plain', null), variants.plain);
+assert.equal(select(variants, 'karaoke', null), variants.karaoke);
+assert.equal(select(variants, 'synced', { type: 'synced', lyrics: '[00:01.00]{bg}Vocal output' }), '[00:01.00]{bg}Vocal output');
+assert.equal(select(variants, 'plain', { type: 'synced', lyrics: 'Wrong format' }), variants.plain);
+assert.equal(select({ karaoke: variants.karaoke }, 'synced', null), variants.karaoke);
+assert.equal(select({ synced: variants.synced }, 'plain', null), variants.synced);
+assert.equal(select(null, 'plain', null), '');
+console.log('PASS: independent API variants, active vocal override, missing-variant fallback');
