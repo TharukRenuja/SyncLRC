@@ -134,6 +134,10 @@ markers, not lyric text; `{bg}` marks the role separately from the singer.
 Background lines use their own start time and may overlap the main line.
 Ordinary parentheses do not mark a background line.
 
+Use `type=synced&include=agents,background` for line-timed vocal markers.
+Use `type=plain&include=background` for background lines in parentheses;
+plain output never includes agent tags.
+
 ```lrc
 [00:01.00]{agent:v1}<00:01.00>Hello<00:02.00>
 [00:01.50]{agent:v1}{bg}<00:01.50>Echo<00:02.50>

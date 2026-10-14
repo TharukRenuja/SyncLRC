@@ -12,8 +12,6 @@ export function lyricOptions(url) {
   if (hasInclude && (!requested.length || requested.some(value => !FEATURES.includes(value)))) {
     throw new Error('Valid include features: agents, background.');
   }
-  const type = url.searchParams.get('type');
-  if (hasInclude && type && type !== 'karaoke') throw new Error('Vocal features require type=karaoke or an omitted type.');
   return { format, requested, hasInclude };
 }
 
@@ -54,11 +52,19 @@ export function renderOptions(combined, body, options) {
   let lyrics = body.lyrics || body.karaoke || body.synced || body.plain || null;
   let type = body.type || (body.karaoke ? 'karaoke' : body.synced ? 'synced' : 'plain');
   const requested = options.hasInclude ? options.requested : [];
-  if (combined.rich?.ttml && (!body.type || body.type === 'karaoke')) {
-    lyrics = renderDocument(combined.rich, options.format, requested);
-    type = 'karaoke';
+  if (combined.rich?.ttml && (type === 'karaoke' || (options.hasInclude &&
+      (type === 'synced' || (requested.includes('background') && combined.rich.included?.includes('background')))))) {
+    lyrics = renderDocument(combined.rich, type === 'plain' ? 'lrc' : options.format, requested, type);
+    if (type === 'plain' && options.format === 'ttml') lyrics = lrcToTtml(lyrics);
   } else if (lyrics && options.format === 'ttml') lyrics = lrcToTtml(lyrics);
   const result = { lyrics, type, format: options.format };
-  if (options.hasInclude) result.features = featureStatus(combined, requested, body.instrumental);
+  if (options.hasInclude) {
+    result.features = featureStatus(combined, requested, body.instrumental);
+    if (type === 'plain' && requested.includes('agents')) {
+      result.features.included = result.features.included.filter(feature => feature !== 'agents');
+      result.features.unknown = result.features.unknown.filter(feature => feature !== 'agents');
+      if (!result.features.unavailable.includes('agents')) result.features.unavailable.push('agents');
+    }
+  }
   return result;
 }

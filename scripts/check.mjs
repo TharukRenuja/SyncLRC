@@ -7,10 +7,52 @@ import { join } from 'node:path';
 import { handleGetLyrics, handleLyricsRequest } from '../src/api/lyrics.js';
 import { startMetadata, enrichMetadata } from '../src/sources/deezer.js';
 import { renderDocument } from '../src/lyrics/document.js';
-import { lrcToTtml } from '../src/lyrics/options.js';
+import { lyricOptions, renderOptions, lrcToTtml } from '../src/lyrics/options.js';
 import { convertLyrics } from '../src/lyrics/format.js';
 import { handleScheduled } from '../src/refresh.js';
 import { storeSearchHits } from '../src/storage/bodies.js';
+
+
+  {
+    const rich = { ttml: '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div><p begin="1s" end="5s" ttm:agent="v1"><span begin="1s" end="2s">Hello </span><span begin="3s" end="4s">world</span><span ttm:role="x-bg"><span begin="1.5s" end="2.5s">Echo</span></span></p></div></body></tt>', included: ['agents', 'background'], unavailable: [], unknown: [] };
+    const combined = { rich, karaoke: 'stored karaoke', synced: 'stored synced', plain: 'Original plain (literal)' };
+    const options = type => lyricOptions(new URL(`https://test/lyrics?type=${type}&include=agents,background`));
+    const synced = renderOptions(combined, { lyrics: 'stored synced', type: 'synced' }, options('synced'));
+    assert.equal(synced.lyrics, '[00:01.00]{agent:v1}Hello world\n[00:01.50]{agent:v1}{bg}Echo');
+    assert.deepEqual(synced.features.included, ['agents', 'background']);
+    const plain = renderOptions(combined, { lyrics: combined.plain, type: 'plain' }, options('plain'));
+    assert.equal(plain.lyrics, 'Hello world\n(Echo)');
+    assert.deepEqual(plain.features.included, ['background']);
+    assert.deepEqual(plain.features.unavailable, ['agents']);
+    assert.equal(combined.plain, 'Original plain (literal)');
+    const noBackground = { ...combined, rich: { ...rich, ttml: rich.ttml.replace(/<span ttm:role="x-bg">.*?<\/span><\/span>/, ''), included: ['agents'], unavailable: ['background'] } };
+    assert.equal(renderOptions(noBackground, { lyrics: combined.plain, type: 'plain' }, options('plain')).lyrics, combined.plain);
+    const ordinary = renderOptions(combined, { lyrics: combined.plain, type: 'plain' }, { format: 'lrc', hasInclude: false });
+    assert.equal(ordinary.lyrics, combined.plain);
+    const fallback = renderOptions({ synced: '[00:01.00]Fallback' }, { lyrics: '[00:01.00]Fallback', type: 'synced' }, options('synced'));
+    assert.equal(fallback.lyrics, '[00:01.00]Fallback');
+    assert.deepEqual(fallback.features.unknown, ['agents', 'background']);
+    const ttml = renderOptions(combined, { type: 'synced' }, { ...options('synced'), format: 'ttml' });
+    assert.match(ttml.lyrics, /itunes:timing="Line"/);
+    assert.match(ttml.lyrics, /begin="1.5s" end="2.5s"/);
+    assert(!ttml.lyrics.includes('begin="3s"'));
+    assert.equal(renderDocument(rich, 'lrc', ['background'], 'synced'), '[00:01.00]Hello world\n[00:01.50]{bg}Echo');
+    const { buildResponse } = await import('../src/api/response.js');
+    for (const type of ['synced', 'plain']) {
+      for (const format of ['lrc', 'ttml']) {
+        const response = buildResponse({ ...combined }, type, 'id', 'Song', 'Artist', {},
+          { options: { ...options(type), format } });
+        assert.equal(response.status, 200);
+        const data = await response.json();
+        assert.equal(data.type, type);
+        assert.equal(data.format, format);
+        assert.deepEqual(data.features.included, type === 'plain' ? ['background'] : ['agents', 'background']);
+        if (format === 'lrc') assert.equal(data.lyrics, type === 'plain' ? plain.lyrics : synced.lyrics);
+        else assert.match(data.lyrics, /<tt /);
+      }
+    }
+
+  }
 
 const dir = mkdtempSync(join(tmpdir(), 'synclrc-check-'));
 const db = join(dir, 'db.sqlite');

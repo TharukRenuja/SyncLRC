@@ -43,7 +43,7 @@ function clock(value) {
   return `${String(Math.floor(centis / 6000)).padStart(2, '0')}:${String(Math.floor(centis / 100) % 60).padStart(2, '0')}.${String(centis % 100).padStart(2, '0')}`;
 }
 
-function renderLrc(doc) {
+function renderLrc(doc, type = 'karaoke') {
   const lines = [];
   function add(node, stamp, agent, background = false) {
     const parts = [];
@@ -82,6 +82,7 @@ function renderLrc(doc) {
     const words = parts.map((part, index) => {
       const marker = part.agent !== current ? `{agent:${part.agent || 'unknown'}}` : '';
       current = part.agent;
+      if (type !== 'karaoke') return (type === 'synced' ? marker : '') + part.text;
       const next = parts.slice(index + 1).find(part => part.time);
       // The next start already closes adjacent words; separate ends preserve silent gaps.
       const end = part.end && seconds(part.end) > seconds(part.time) &&
@@ -89,7 +90,8 @@ function renderLrc(doc) {
       return marker + (part.time ? `<${part.time}>` : '') + part.text + end;
     }).join('');
     const lineTime = background ? parts.find(part => part.time)?.time || stamp : stamp;
-    lines.push(`[${lineTime}]${prefix}${background ? '{bg}' : ''}${words}`);
+    lines.push(type === 'plain' ? (background ? `(${words})` : words) :
+      `[${lineTime}]${prefix}${background ? '{bg}' : ''}${words}`);
   }
   for (const para of elements(doc).filter(node => node.localName === 'p')) {
     const stamp = clock(para.getAttribute('begin'));
@@ -106,9 +108,23 @@ function renderLrc(doc) {
   return lines.join('\n');
 }
 
-export function renderDocument(rich, format, requested = []) {
-  const doc = filtered(rich.ttml, requested);
-  return format === 'ttml' ? new XMLSerializer().serializeToString(doc.documentElement, { requireWellFormed: true }) : renderLrc(doc);
+export function renderDocument(rich, format, requested = [], type = 'karaoke') {
+  const doc = filtered(rich.ttml, type === 'plain' ? requested.filter(feature => feature !== 'agents') : requested);
+  if (format === 'ttml' && type === 'synced') {
+    doc.documentElement.setAttributeNS('http://music.apple.com/lyric-ttml-internal', 'itunes:timing', 'Line');
+    for (const node of elements(doc).filter(node => role(node) === 'background')) {
+      const timed = elements(node).filter(child => child.hasAttribute('begin'));
+      if (timed.length) {
+        node.setAttribute('begin', timed[0].getAttribute('begin'));
+        if (timed.at(-1).hasAttribute('end')) node.setAttribute('end', timed.at(-1).getAttribute('end'));
+      }
+    }
+    for (const node of elements(doc).filter(node => node.localName === 'span' && role(node) !== 'background')) {
+      node.removeAttribute('begin');
+      node.removeAttribute('end');
+    }
+  }
+  return format === 'ttml' ? new XMLSerializer().serializeToString(doc.documentElement, { requireWellFormed: true }) : renderLrc(doc, type);
 }
 
 export function decodeDocument(data) {
